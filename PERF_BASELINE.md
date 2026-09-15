@@ -950,3 +950,75 @@ separate, pre-existing over-logging issue. Recorded here rather than
 fixed unannounced inside this pagination commit, matching how the
 `/api/fleet/decisions` scoping bug and `telemetry_history` schema drift
 were handled earlier in this pass.
+
+---
+
+## Step 10 — Debounce input handlers
+
+**Re-verified Phase 0's assessment rather than trusting it.** Phase 0
+flagged Incidents.jsx's search box as the only debounce candidate, and
+called it marginal (filters a 36-row local array, no network call). That
+assessment held up — but it wasn't the right target. Surveyed all 19
+`onChange` handlers in the client and checked what each one actually does
+downstream, not just what it looks like.
+
+### The real finding
+
+[`MissionControlPanel.jsx`](client/src/components/mission-control/MissionControlPanel.jsx)'s
+speaker-volume slider:
+```jsx
+<input type="range" ... onChange={e => setSpeakerVol(e.target.value)} />
+```
+traces into `rapidStore.js`:
+```js
+setSpeakerVol: (v) => { set({ speakerVol: v }); get().updateCommunicationSettings({ speakerVolume: v }); },
+```
+`updateCommunicationSettings` fires an immediate `PATCH` request. A range
+input's `onChange` fires on every pixel of drag movement — a single drag
+gesture can generate dozens of events, each one a real network request to
+persist a setting that only matters once the user stops moving the slider.
+
+### Fix
+
+Split the two concerns: the **local** state update (`set({ speakerVol: v })`)
+stays synchronous — the slider position and the `%` label must keep
+tracking the drag exactly as before, per the no-UI/UX-change rule. Only
+the **network persistence** is debounced (400ms), via a plain module-level
+timer — no new dependency needed for six lines of vanilla JS.
+
+### A correctness edge case caught before it shipped
+
+`updateCommunicationSettings` originally read `get().getSelectedDrone()`
+- fine when the call was synchronous, but once delayed by 400ms, the
+"currently selected" drone could have changed if the operator switched
+selection mid-drag, silently misdirecting the write to the wrong drone.
+Fixed by capturing the target drone's id synchronously, at drag time, and
+passing it through explicitly into the debounced closure — `setMicActive`/
+`setSpeakerActive` (still synchronous, no debounce) are unaffected, since
+`updateCommunicationSettings`'s target-drone override is optional.
+
+### Verified, with a headless browser simulating a real drag
+
+Dispatched 15 synthetic `input`/`change` events ~10ms apart (values
+10->77) on the actual slider DOM element:
+
+```
+at +200ms (mid-debounce): 0 PATCH request(s) sent
+at +700ms (after debounce): 1 PATCH request(s) sent
+  body: {"speakerVolume":"77"}
+```
+
+15 events collapsed to 1 network call, carrying the final value, not a
+stale intermediate one. Confirmed the displayed `%` label tracks the drag
+instantly regardless (`77%`, read directly from the slider's DOM sibling
+span) — the debounce is invisible to the user.
+
+Edge case re-tested explicitly: dragged the slider (targeting Rakshak-01),
+then clicked to select Rakshak-02 ~100ms into the 400ms window (well
+before the debounced write fires). The resulting PATCH correctly targeted
+`Rakshak-01`'s id, not `Rakshak-02`'s - confirmed against live `/api/drones`
+data using their full, distinguishing ids (a first check using truncated
+8-character ids was misleading, since the two ids differ only in their
+last character - caught and re-verified with the full id).
+
+Full smoke test: all 200. Client lint/build pass.

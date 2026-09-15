@@ -345,6 +345,12 @@ const supabase = isSupabaseEnabled ? createClient(supabaseUrl, supabaseKey) : nu
 let basesListCache = null; // { expires: epoch ms, data: array } | null
 const BASES_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
 
+// Step 9 (performance): mission/incident state-transition markers, kept in
+// full regardless of any `limit` passed to dispatchLogs.listForIncident() —
+// see the comment there. Excludes 'control' and 'snapshot', the two action
+// types observed to repeat many times over a single mission's lifetime.
+const DISPATCH_LOG_LIFECYCLE_ACTIONS = ['launch', 'arrival', 'return_to_base', 'abort', 'fleet_decision'];
+
 // Database Adapter Interface
 const db = {
   isSupabase: isSupabaseEnabled,
@@ -857,13 +863,49 @@ const db = {
       localDb.dispatch_logs.push(newLog);
       return [newLog];
     },
-    async listForIncident(incidentId) {
+    // Step 9 (performance): client-facing routes (routes/incidents.js,
+    // routes/missions.js's /evidence) now pass an explicit `limit` to bound
+    // what reaches a browser — measured a real incident returning 907
+    // unbounded rows in one response.
+    //
+    // `limit` defaults to null (unbounded / original behaviour) rather than
+    // a fixed number, because services/simulatorService.js searches the
+    // full list for a 'launch' entry and for 'SAFETY AUTO-RETURN'/
+    // 'Controller override' notes to compute RL training signals
+    // (responseTimeSec, safetyViolations, controllerOverrode); it never
+    // passes a limit, so it always gets the true full history.
+    //
+    // When a limit IS passed, a plain "most recent N" is NOT safe: measured
+    // one incident with 995 'control' entries burying its one 'launch' and
+    // one 'fleet_decision' entry near the start — a fixed recent-N window
+    // dropped both, which would silently zero out the Dashboard's flight
+    // duration display (rapidStore.js's tick() finds 'launch' in this exact
+    // response). So lifecycle actions (rare - 1-2 each per incident) are
+    // always kept in full, and only the high-volume routine ones (chiefly
+    // 'control') are capped to the most recent `limit`.
+    async listForIncident(incidentId, limit = null) {
       if (isSupabaseEnabled) {
-        const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
-        if (error) throw error;
-        return data;
+        if (!limit) {
+          const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
+          if (error) throw error;
+          return data.reverse();
+        }
+        const [lifecycleRes, recentRes] = await Promise.all([
+          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).in('action', DISPATCH_LOG_LIFECYCLE_ACTIONS),
+          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false }).limit(limit)
+        ]);
+        if (lifecycleRes.error) throw lifecycleRes.error;
+        if (recentRes.error) throw recentRes.error;
+        const byId = new Map();
+        for (const row of [...lifecycleRes.data, ...recentRes.data]) byId.set(row.id, row);
+        return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       }
-      return localDb.dispatch_logs.filter(l => l.incident_id === incidentId).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const all = localDb.dispatch_logs.filter(l => l.incident_id === incidentId);
+      if (!limit) return all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const byId = new Map();
+      for (const row of all.filter(l => DISPATCH_LOG_LIFECYCLE_ACTIONS.includes(l.action))) byId.set(row.id, row);
+      for (const row of [...all].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, limit)) byId.set(row.id, row);
+      return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
   },
 
@@ -898,13 +940,27 @@ const db = {
       localDb.snapshots.push(newSnap);
       return newSnap;
     },
-    async listForIncident(incidentId) {
+    // Step 9 (performance): same design as dispatchLogs.listForIncident()
+    // above — `limit` defaults to null (unbounded) because
+    // cameraManager.lastSnapshotHash() reads the LAST entry to extend the
+    // evidence hash chain (safe under any limit — "most recent" always
+    // includes the latest one) but must not be capped in a way that could
+    // ever exclude it; only pass `limit` from a browser-facing route.
+    // Measured a real incident returning 900 unbounded rows in one
+    // response.
+    async listForIncident(incidentId, limit = null) {
       if (isSupabaseEnabled) {
-        const { data, error } = await supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
+        let query = supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
+        if (limit) query = query.limit(limit);
+        const { data, error } = await query;
         if (error) throw error;
-        return data;
+        return data.reverse();
       }
-      return localDb.snapshots.filter(s => s.incident_id === incidentId);
+      let result = localDb.snapshots
+        .filter(s => s.incident_id === incidentId)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      if (limit) result = result.slice(0, limit);
+      return result.reverse();
     }
   },
 

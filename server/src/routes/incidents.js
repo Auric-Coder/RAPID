@@ -143,20 +143,22 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// GET /api/incidents/:id/logs - Get log trails
+// GET /api/incidents/:id/logs?limit=200 - Get log trails
 router.get('/:id/logs', async (req, res) => {
   try {
-    const logs = await db.dispatchLogs.listForIncident(req.params.id);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+    const logs = await db.dispatchLogs.listForIncident(req.params.id, limit);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/incidents/:id/snapshots - Get captured evidence snapshots
+// GET /api/incidents/:id/snapshots?limit=200 - Get captured evidence snapshots
 router.get('/:id/snapshots', async (req, res) => {
   try {
-    const snapshots = await db.snapshots.listForIncident(req.params.id);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+    const snapshots = await db.snapshots.listForIncident(req.params.id, limit);
     res.json(snapshots);
   } catch (err) {
     res.status(500).json({ error: err.message });

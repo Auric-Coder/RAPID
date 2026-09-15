@@ -853,3 +853,100 @@ existing Supabase REST client — pure added complexity with no
 performance benefit, since Supabase already pools server-side and Node
 already reuses HTTP connections client-side. Skipped, with evidence
 rather than assumption.
+
+---
+
+## Step 9 — Paginate large lists
+
+**Found:** `GET /api/incidents/:id/logs` and `GET /api/incidents/:id/snapshots`
+were completely unbounded. Measured directly: one real incident returned
+**907 log entries** and **900 snapshots** in a single response, rendered
+in one unpaginated dossier modal.
+
+### The naive fix would have broken a real feature — caught before shipping
+
+Investigated *why* the count was so high before designing a fix:
+
+```
+action breakdown for the worst incident: fleet_decision:1, launch:1,
+control:995, arrival:2, return_to_base:1
+```
+
+995 of 1000 entries are `action: 'control'` — noise from something
+logging too verbosely (flagged below, not fixed here). The real
+lifecycle events are each only 1-2 entries, buried inside the noise.
+
+First implementation: a plain "most recent 200" cap, matching every other
+`list*` function's established convention in this file. Tested against
+the worst-case incident — **and it silently dropped `launch` and
+`fleet_decision`** from the response. This is not a cosmetic loss:
+`rapidStore.js`'s `tick()` computes the Dashboard's flight-duration
+display by finding `action === 'launch'` in this exact response. Shipping
+the naive fix would have broken a currently-working feature for any
+sufficiently active incident — caught by testing against real data before
+committing, not assumed safe.
+
+Also checked every other caller of these two functions before finalizing
+anything:
+- `services/simulatorService.js` searches the **full** history for
+  `launch` and for `'SAFETY AUTO-RETURN'`/`'Controller override'` notes
+  to compute RL training signals (`responseTimeSec`, `safetyViolations`,
+  `controllerOverrode`). A capped default would have silently corrupted
+  that training data.
+- `services/camera/cameraManager.js` only needs the single **last**
+  entry to extend the evidence hash chain — safe under any cap, since
+  "most recent" always includes the latest one regardless of window size.
+- `routes/missions.js`'s `/evidence` route also returns these lists to a
+  browser and had the identical unbounded-response problem, found by
+  checking every caller rather than only the two originally spotted.
+
+### Final design
+
+`limit` defaults to **`null` (unbounded)** rather than a fixed number —
+preserving the internal callers' exact original behaviour, since they
+never pass a limit. Only client-facing routes explicitly pass one:
+
+- **`dispatchLogs.listForIncident(incidentId, limit)`**: when a limit is
+  passed, lifecycle actions (`launch`, `arrival`, `return_to_base`,
+  `abort`, `fleet_decision` — rare, 1-2 each per incident) are always
+  included in full via a separate query; only the high-volume routine
+  actions (chiefly `control`) are capped to the most recent `limit`.
+  Both queries use the incident_id-filtered composite index added in
+  Step 7.
+- **`snapshots.listForIncident(incidentId, limit)`**: plain most-recent-N
+  — no lifecycle-preservation complexity needed, since its only
+  correctness-sensitive consumer (`cameraManager`) only needs the latest
+  entry, which any recency-based cap always includes.
+- `routes/incidents.js`'s two routes and `routes/missions.js`'s
+  `/evidence` route now pass `limit` (default 200, `?limit=` override,
+  capped at 1000) — the three responses that actually reach a browser.
+
+### Verified
+
+Re-tested the exact worst-case incident after the fix:
+
+| | Before | Naive cap (rejected) | Final fix |
+|---|---:|---:|---|
+| Entries returned | 907 | 200 | **203** |
+| `launch` present | ✅ | ❌ | ✅ |
+| `fleet_decision` present | ✅ | ❌ | ✅ |
+| `arrival`/`return_to_base` present | ✅ | ✅ | ✅ |
+
+`?limit=50` override tested: 53 entries, `launch` still present.
+Internal (no-limit) call re-verified to return the true, complete,
+unbounded history (1000 entries at time of test — the simulator kept
+writing during this session). Incidents dossier modal screenshotted:
+Timeline Log correctly shows Fleet Decision -> Launch -> 4x Arrival
+first, followed by the capped recent Control activity — the natural
+mission narrative is intact, not cut mid-story.
+
+Full 11-endpoint smoke test: all 200. Client lint/build pass.
+
+### Flagged, not fixed (out of scope for this step)
+
+The root cause behind 995 `control` entries on one incident — something
+logging far more verbosely than a dispatch lifecycle needs — is a
+separate, pre-existing over-logging issue. Recorded here rather than
+fixed unannounced inside this pagination commit, matching how the
+`/api/fleet/decisions` scoping bug and `telemetry_history` schema drift
+were handled earlier in this pass.

@@ -191,11 +191,17 @@ router.get('/:droneId/evidence', async (req, res) => {
 
     const missionId = req.query.mission_id || drone.current_incident_id;
 
+    // Step 9 (performance): this response reaches a browser, so it's
+    // bounded the same way routes/incidents.js's logs/snapshots routes are
+    // — 200 most-recent by default, unlike the internal callers in
+    // simulatorService.js/cameraManager.js which need the true full history
+    // and deliberately don't pass a limit.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
     const [recording, snapshots, actions, logs] = await Promise.all([
       missionId ? db.missionRecordings.getForMission(missionId) : Promise.resolve(null),
-      missionId ? db.snapshots.listForIncident(missionId) : Promise.resolve([]),
+      missionId ? db.snapshots.listForIncident(missionId, limit) : Promise.resolve([]),
       db.controllerActions.listForDrone(droneId, 100),
-      missionId ? db.dispatchLogs.listForIncident(missionId) : Promise.resolve([])
+      missionId ? db.dispatchLogs.listForIncident(missionId, limit) : Promise.resolve([])
     ]);
 
     res.json({ recording, snapshots, controllerActions: actions, missionLogs: logs });

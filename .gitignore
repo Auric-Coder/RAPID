@@ -1,0 +1,54 @@
+﻿# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables & secrets (CRITICAL: Do not push to GitHub)
+.env
+.env.*
+!.env.example
+server/.env
+client/.env
+mobile/.env
+
+# Build outputs
+client/dist/
+dist/
+build/
+.output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Internal Developer Reports & Scratch Files (kept local for developers)
+RAPID_Project_Report.md
+*Project_Report*.md
+scratch/
+.scratch/
+
+# Mobile / Expo build artifacts
+mobile/.expo/
+mobile/android/
+mobile/ios/
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Editor & OS files
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

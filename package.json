@@ -1,0 +1,13 @@
+{
+  "name": "rapid-workspace",
+  "version": "1.0.0",
+  "description": "RAPID Workspace Coordinator",
+  "scripts": {
+    "bootstrap": "npm install --prefix server && npm install --prefix client",
+    "server": "npm run start --prefix server",
+    "client": "npm run dev --prefix client",
+    "dev": "node -e \"const { spawn } = require('child_process'); spawn('npm', ['run', 'start'], { cwd: 'server', stdio: 'inherit', shell: true }); spawn('npm', ['run', 'dev'], { cwd: 'client', stdio: 'inherit', shell: true });\"",
+    "build": "npm install --prefix client --include=dev && npm run build --prefix client && npm install --prefix server",
+    "start": "npm run start --prefix server"
+  }
+}

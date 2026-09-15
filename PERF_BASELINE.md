@@ -1239,3 +1239,51 @@ confirmed both correctly resolve to 0.
 Full endpoint smoke test: all 200. Client lint/build pass. Analytics
 screenshotted fully loaded: real chart data, no leftover skeleton
 artifacts.
+
+---
+
+## Step 14 — Compress/optimize images: verified, no changes needed
+
+Re-verified rather than trusted Phase 0's assessment, given 13 steps of
+changes since then.
+
+### Evidence
+
+1. **Zero local image assets** in `client/` (excluding `node_modules`/
+   `dist`) — confirmed by filesystem search. The favicon is an inline
+   SVG data URI. No `<img>` source in this codebase points at a bundled
+   file.
+2. **All 8 remote snapshot images** (`images.unsplash.com`, used by
+   `simulatorService.js`/`surveillanceCoordinator.js`/`routes/drones.js`)
+   already carry `?q=80&w=600` — quality 80%, width capped at 600px,
+   applied server-side by Unsplash's own imgix-based CDN. Verified with
+   real `HEAD` requests, not assumed from the query string alone:
+   **44-82 KB per image**, `Content-Type: image/jpeg` — genuinely small
+   for a snapshot thumbnail displayed at ~300px in a 2-column grid.
+3. **Checked whether a modern format would help, rather than assuming
+   JPEG is already optimal.** Requested the same image as WebP and AVIF
+   via Unsplash's format-negotiation parameter:
+
+   | Format | Size |
+   |---|---:|
+   | JPEG (current) | 81,551 B |
+   | WebP | **105,478 B — larger** |
+   | AVIF | 79,626 B — ~2.4% smaller |
+
+   WebP would be a regression here; AVIF's saving is negligible and not
+   worth the added complexity (`<picture>` fallback markup, older-browser
+   compatibility) for ~2KB per image. The current format is already the
+   right choice for this data, confirmed rather than assumed.
+4. **Map tiles** (`{s}.basemaps.cartocdn.com`) are pre-rendered,
+   appropriately-sized PNG tiles served by Carto's CDN for Leaflet - not
+   something this app generates or controls.
+5. **`mobile/assets/*.png`** (the 393 KB app icon Phase 0 flagged) is
+   confirmed never referenced anywhere in `client/` or `server/` - it is
+   entirely isolated to the separate Expo/React Native app and has zero
+   effect on the web app measured throughout this pass.
+
+### Conclusion
+
+No dependency, code, or asset change made. The image pipeline was
+already properly optimized before this pass began; this step confirms
+that with evidence rather than repeating Phase 0's assumption unchecked.

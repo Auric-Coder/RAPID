@@ -724,3 +724,90 @@ Scoping correctness re-verified after caching the shared, unfiltered
 list: `goa.commander` still sees 5 drones, `national.commander` still
 sees 22 — confirming per-user filtering downstream of the cache is
 unaffected. Full 13-endpoint smoke test: all 200.
+
+---
+
+## Step 7 — Database indexes (evidence-based, not speculative)
+
+**Method, stated honestly:** no live `EXPLAIN ANALYZE` access exists — only
+`SUPABASE_URL`/`SUPABASE_KEY` (PostgREST REST API), no direct Postgres
+connection, no `.rpc()` for raw SQL anywhere in this codebase. Used the
+best available substitute instead: real row counts for all 19 tables,
+cross-referenced against every actual `.eq()`/`.order()` query shape in
+`config/database.js` and every existing `CREATE INDEX` in `schema.sql`.
+Evidence-based, but static analysis — not a live query planner's word.
+Flagging that distinction rather than overselling the rigor.
+
+### Real table sizes
+
+| Table | Rows |
+|---|---:|
+| `telemetry_history` | 26,692 |
+| `dispatch_logs` | 19,901 |
+| `snapshots` | 19,735 |
+| *(all other 16 tables)* | ≤ 130 |
+
+For the 16 small tables, a sequential scan costs nothing regardless of
+indexing — no index was added there. Adding one would have been exactly
+the "add indexes because it's on the checklist" anti-pattern this pass's
+rules explicitly warn against.
+
+### Cross-reference: query shape vs. existing index, for all 3 large tables
+
+| Table | Actual query | Existing index | Verdict |
+|---|---|---|---|
+| `telemetry_history` | `.eq('drone_id').order('timestamp' desc)` | `(drone_id, timestamp DESC)` | Already correct — no change |
+| `dispatch_logs` | `.eq('incident_id').order('timestamp' asc)` | **none at all** | **Real gap** |
+| `snapshots` | `.eq('incident_id').order('timestamp' asc)` | `(incident_id)` — filter only | **Minor gap** (sort not covered) |
+
+All 16 other query patterns in the file (users, drones, incidents,
+controller_actions, security_audit_log, mission_recordings, etc.) were
+checked individually and already have a matching index for their exact
+filter/sort columns.
+
+### Changes to `supabase/schema.sql`
+
+1. **New:** `idx_dispatch_logs_incident_time ON dispatch_logs(incident_id, timestamp)`
+   — this table had zero index beyond its primary key, despite being the
+   exact query behind `GET /api/incidents/:id/logs`, a hot path (Dashboard
+   incident selection, Incidents dossier modal — see Step 3's screenshot).
+2. **Upgrade:** dropped the single-column `idx_snapshots_incident`,
+   replaced with composite `idx_snapshots_incident_time ON
+   snapshots(incident_id, timestamp)`. Still serves plain `incident_id`
+   lookups (Postgres's leftmost-column rule), so this is not schema bloat
+   — keeping both would mean every insert/update maintains two indexes for
+   zero added read benefit.
+
+### ⚠️ Manual action required — I cannot apply this myself
+
+`CREATE INDEX`/`DROP INDEX` are DDL. Exactly like the `telemetry_history`
+column fix earlier in this pass, the Supabase JS client has no raw-SQL
+execution path, so **these statements must be run once in the Supabase
+SQL Editor** for them to take effect on the live database:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_dispatch_logs_incident_time ON dispatch_logs(incident_id, timestamp);
+
+DROP INDEX IF EXISTS idx_snapshots_incident;
+CREATE INDEX IF NOT EXISTS idx_snapshots_incident_time ON snapshots(incident_id, timestamp);
+```
+
+Both are idempotent (`IF NOT EXISTS`/`IF EXISTS`) and safe to re-run.
+
+### Verification
+
+Since I can't run `EXPLAIN` even after the index exists, verification here
+is necessarily narrower than earlier steps:
+- Confirmed the SQL matches the exact, already-proven-working syntax
+  pattern used elsewhere in the same file (`idx_telemetry_drone_time`).
+- Confirmed the application code needs zero changes — indexes are
+  transparent to query correctness, only to the query plan — and verified
+  `GET /api/incidents/:id/logs` (907 entries) and
+  `GET /api/incidents/:id/snapshots` (900 entries) for a real incident
+  both return 200 and correctly-sorted data on the *current* (pre-index)
+  schema, confirming no regression from this change.
+- Full 10-endpoint smoke test: all 200. Client lint/build pass.
+- **The actual performance verification** (reduced query time / rows
+  scanned) requires checking the Supabase dashboard's query performance
+  view after running the SQL above — this is the one place in this pass
+  I cannot close the loop myself.

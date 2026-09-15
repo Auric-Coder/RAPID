@@ -166,6 +166,15 @@ CREATE TABLE IF NOT EXISTS dispatch_logs (
     notes TEXT
 );
 
+-- Step 7 (performance): this table had NO index beyond its primary key,
+-- despite dispatchLogs.listForIncident() (config/database.js) always
+-- filtering by incident_id and ordering by timestamp - the exact query
+-- behind GET /api/incidents/:id/logs, a hot path (Dashboard incident
+-- selection, Incidents dossier modal). Measured at 19,901 rows and
+-- growing continuously. Composite so Postgres can satisfy the WHERE and
+-- the ORDER BY from the same index without a separate sort step.
+CREATE INDEX IF NOT EXISTS idx_dispatch_logs_incident_time ON dispatch_logs(incident_id, timestamp);
+
 -- 6. Snapshots (Evidence Capture)
 CREATE TABLE IF NOT EXISTS snapshots (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -187,7 +196,18 @@ CREATE TABLE IF NOT EXISTS snapshots (
     hash_payload TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_snapshots_incident ON snapshots(incident_id);
+-- Step 7 (performance): snapshots.listForIncident() (config/database.js)
+-- filters by incident_id AND orders by timestamp - the original
+-- idx_snapshots_incident only covered the filter, leaving Postgres to sort
+-- the matched rows separately on every call. This composite index covers
+-- both from a single index (and still serves plain incident_id-only
+-- lookups, per Postgres's leftmost-column rule - not a net-new index,
+-- an upgrade of the existing one). Measured at 19,735 rows and growing.
+-- The old single-column index is dropped: keeping both would mean every
+-- insert/update maintains two indexes for zero added read benefit, since
+-- the composite already serves everything the old one did.
+DROP INDEX IF EXISTS idx_snapshots_incident;
+CREATE INDEX IF NOT EXISTS idx_snapshots_incident_time ON snapshots(incident_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_snapshots_drone ON snapshots(drone_id);
 
 -- 7. Mission Recordings (Evidence & Audit Lifecycle)

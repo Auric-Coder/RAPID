@@ -593,3 +593,68 @@ fields it returns are correct; `.id` is not, and downstream foreign-key
 filtering against Supabase (districts, bases, airspace zones) built from
 that `.id` silently returns zero rows. Full details reported separately;
 not fixed as part of Step 5 per the one-issue-per-step rule.
+
+---
+
+## Fix — `db.states.get()` silently resolved codes to the wrong row on Supabase
+
+Fixes the bug found while verifying Step 5's cache invalidation. This is
+a pre-existing data-correctness defect, not a performance item; recorded
+here because it directly affected what Step 5's map-config caching was
+serving.
+
+### Root cause
+
+`db.states.get(id)` filtered Supabase with a single `.eq('id', id)`. Nine
+call sites across the app (`routes/geo.js`, `routes/airspace.js`,
+`routes/surveillance.js`, `routes/fleet.js`, `rl/environment.js`) call it
+with a human-readable **code** (`'GA'`, `'PB'`), not a UUID. That can never
+match the UUID primary key, so the Supabase query always failed and the
+function silently fell through to an **in-memory fallback seeded with a
+fresh random UUID on every process boot**. The fallback's `code`/`name`
+fields were correct (same static seed data), which is exactly why this
+went unnoticed — anything reading `.name` or `.code` worked fine. Only
+`.id`, used as a foreign key for filtering districts/bases/zones against
+the real database, was silently wrong, and it changed on every restart.
+
+Proven with live data before the fix:
+
+```
+REAL Supabase GA id:          9fec1674-...
+db.states.get('GA') returned: 57d03680-...   (wrong, process-random)
+
+districts matching the WRONG id: 0   (real count: 2)
+bases matching the WRONG id:     0   (real count: 5)
+```
+
+This is the same class of bug as the `scope_id` mismatch fixed earlier in
+this pass — a code passed to a lookup that only correctly resolves a real
+Supabase UUID, silently falling back to a fabricated one.
+
+### Fix
+
+Matched the codebase's own established pattern for exactly this problem —
+`organisations.get()` (a few lines below `states.get()` in the same file)
+already does two safe equality lookups (id, then code) rather than one.
+`states.get()` now does the same.
+
+### Verified
+
+| Check | Before | After |
+|---|---:|---:|
+| `states.get('GA').id` vs. real Supabase id | mismatch | **exact match** |
+| `states.get(<real UUID>)` | (untested — moot, this path already worked) | still works |
+| `states.get('bogus code')` | — | returns `null`, not a wrong record |
+| `districts?state=GA` | 0 (wrong) | **2** (matches Supabase) |
+| `bases?state=GA` | 0 (wrong) | **5** (matches Supabase) |
+| `map-config?state=GA` noFlyZones | 0 (wrong — hid all 3 pre-seeded zones) | **3**, then 4 with a newly created test zone |
+| `map-config?state=PB` noFlyZones | 0 (wrong) | **1** |
+
+The impact was larger than the single failing test that surfaced it: this
+bug hid **every pre-existing seeded no-fly zone for every state**, not
+just newly created ones — a real, silent gap in a safety-relevant feature
+(drone no-fly zone enforcement/display) that had been present since
+Supabase was first connected.
+
+Full 17-endpoint smoke test after the fix: all 200. Client lint/build
+unaffected (server-only change).

@@ -375,10 +375,21 @@ const db = {
     },
     async get(id) {
       if (isSupabaseEnabled) {
-        try {
-          const { data, error } = await supabase.from('states').select('*').eq('id', id).single();
-          if (!error) return data;
-        } catch (_) {}
+        // Two safe equality lookups (id, then code) â€” matches
+        // organisations.get() below. Every caller in this app (routes/geo,
+        // routes/airspace, routes/surveillance, routes/fleet, rl/environment)
+        // passes a human-readable code like 'GA' here, not a UUID. The
+        // previous single `.eq('id', id)` lookup could never match a code
+        // against the UUID primary key, silently fell through to the
+        // in-memory fallback below, and returned that fallback's randomly
+        // generated id â€” a *different* value on every process restart â€”
+        // while still returning the correct code/name/etc. fields, which is
+        // exactly what made the wrong id invisible until something filtered
+        // districts/bases/zones by it against the real database.
+        const byId = await supabase.from('states').select('*').eq('id', id).maybeSingle();
+        if (!byId.error && byId.data) return byId.data;
+        const byCode = await supabase.from('states').select('*').eq('code', id).maybeSingle();
+        if (!byCode.error && byCode.data) return byCode.data;
       }
       return localDb.states.find(s => s.id === id || s.code === id) || null;
     }
@@ -1254,8 +1265,8 @@ const db = {
   }
 };
 // ============================================================
-// Supabase seeding — runs at startup when Supabase is configured.
-// Step 1: Orgs + demo users (must run first — bases FK to org IDs).
+// Supabase seeding ï¿½ runs at startup when Supabase is configured.
+// Step 1: Orgs + demo users (must run first ï¿½ bases FK to org IDs).
 // Step 2: Full geographic hierarchy + drone fleet (first boot only,
 //         guarded by checking if nations AND drones tables are empty).
 // ============================================================
@@ -1296,7 +1307,7 @@ async function seedOrganisationsAndUsersInSupabase() {
 
     console.log('?? Auth: Organisations + demo personnel accounts synced to Supabase.');
   } catch (err) {
-    console.error('??  Failed to sync organisations/users into Supabase — auth may fail:', err.message);
+    console.error('??  Failed to sync organisations/users into Supabase ï¿½ auth may fail:', err.message);
   }
 }
 
@@ -1369,7 +1380,7 @@ async function seedGeographyAndFleetToSupabase() {
     const dronesSeeded = existingDrones  && existingDrones.length  > 0;
 
     if (geoSeeded && dronesSeeded) {
-      console.log('?? Seed: All Supabase data present — skipping seed.');
+      console.log('?? Seed: All Supabase data present ï¿½ skipping seed.');
       return;
     }
 
@@ -1378,7 +1389,7 @@ async function seedGeographyAndFleetToSupabase() {
     let baseIdByCode = Object.fromEntries((liveBasesCheck || []).map(b => [b.base_code, b.id]));
 
     if (!geoSeeded) {
-      console.log('?? Seed: First boot — seeding geographic hierarchy to Supabase...');
+      console.log('?? Seed: First boot ï¿½ seeding geographic hierarchy to Supabase...');
 
       // 1. Nations
       const { error: natErr } = await supabase.from('nations')
@@ -1396,7 +1407,7 @@ async function seedGeographyAndFleetToSupabase() {
       const { data: liveStates } = await supabase.from('states').select('id, code');
       const stateIdByCode = Object.fromEntries(liveStates.map(s => [s.code, s.id]));
 
-      // 3. Districts (no unique DB constraint — use insert, ignore duplicates)
+      // 3. Districts (no unique DB constraint ï¿½ use insert, ignore duplicates)
       const districtPayload = seedDistricts.map(({ id, state_id, ...r }) => ({
         ...r, state_id: stateIdByCode[seedStates.find(s => s.id === state_id)?.code]
       }));
@@ -1410,7 +1421,7 @@ async function seedGeographyAndFleetToSupabase() {
         if (live) localToLiveDistrictId[d.id] = live.id;
       }
 
-      // 4. Organisations (already seeded — fetch stable IDs)
+      // 4. Organisations (already seeded ï¿½ fetch stable IDs)
       const { data: liveOrgs } = await supabase.from('organisations').select('id, code');
       const orgIdByCode = Object.fromEntries(liveOrgs.map(o => [o.code, o.id]));
 

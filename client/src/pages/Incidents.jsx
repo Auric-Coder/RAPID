@@ -16,27 +16,29 @@ function Incidents() {
   const [incidentSnapshots, setIncidentSnapshots] = useState([]);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'media', 'snapshots', 'timeline', 'ai'
 
-  const fetchIncidents = async () => {
-    try {
-      const res = await fetch('/api/incidents');
-      if (res.ok) {
-        const data = await res.json();
-        setIncidents(data);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   useEffect(() => {
+    let ignore = false;
+
+    const fetchIncidents = async () => {
+      try {
+        const res = await fetch('/api/incidents');
+        if (res.ok) {
+          const data = await res.json();
+          if (!ignore) setIncidents(data);
+        }
+      } catch (err) {
+        if (!ignore) console.error(err);
+      }
+    };
+
     fetchIncidents();
+    return () => { ignore = true; };
   }, []);
 
   // Fetch audit logs & snapshots when selecting an incident
   useEffect(() => {
     if (!selectedIncident) return;
-    setActiveTab('overview');
-    
+
     const fetchDossierData = async () => {
       try {
         const logRes = await fetch(`/api/incidents/${selectedIncident.id}/logs`);
@@ -189,7 +191,7 @@ function Incidents() {
                   </td>
                   <td className="p-4 text-center">
                     <button
-                      onClick={() => setSelectedIncident(inc)}
+                      onClick={() => { setSelectedIncident(inc); setActiveTab('overview'); }}
                       className="p-2 bg-slate-900 border border-slate-800 hover:border-cyan-400 hover:text-white rounded-lg transition-all flex items-center gap-1 mx-auto"
                       title="Inspect Evidence Package"
                     >

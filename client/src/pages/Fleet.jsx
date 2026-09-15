@@ -31,9 +31,11 @@ function Fleet() {
   };
 
   useEffect(() => {
-    fetchDrones();
-    const interval = setInterval(fetchDrones, 2000);
-    return () => clearInterval(interval);
+    let ignore = false;
+    const sync = async () => { if (!ignore) await fetchDrones(); };
+    sync();
+    const interval = setInterval(sync, 2000);
+    return () => { ignore = true; clearInterval(interval); };
   }, []);
 
   const toggleMaintenance = async (id, currentStatus) => {

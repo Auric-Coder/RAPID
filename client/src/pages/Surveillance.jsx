@@ -47,10 +47,18 @@ function Surveillance() {
     }
   }, [activeState]);
 
-  useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
-    const interval = setInterval(refresh, 3000);
-    return () => clearInterval(interval);
+    let ignore = false;
+    const sync = async () => { if (!ignore) await refresh(); };
+    sync();
+    return () => { ignore = true; };
+  }, [refresh]);
+
+  useEffect(() => {
+    let ignore = false;
+    const poll = async () => { if (!ignore) await refresh(); };
+    const interval = setInterval(poll, 3000);
+    return () => { ignore = true; clearInterval(interval); };
   }, [refresh]);
 
   useEffect(() => {

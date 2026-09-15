@@ -343,3 +343,125 @@ is nearly 5 seconds on one endpoint.
    **These are DDL and must be run once in the Supabase SQL editor** - they
    cannot be applied through the JS client, and the insert failures continue
    until they are.
+
+---
+
+## Step 3 — Fix unnecessary React re-renders
+
+**Metric:** actual marker DOM node churn, measured with a `MutationObserver`
+attached directly to Leaflet's marker pane (not a proxy — the literal count of
+DOM nodes added/removed), plus a direct count of `L.divIcon()` object
+constructions. Sampled for 20s against a live Dashboard with 14/22 drones
+airborne (comparable load to Step 1's baseline).
+
+### Root cause (confirmed, not assumed)
+
+`droneIcon()` and `incidentIcon()` in `components/shared/utils.js` built a
+**new `L.divIcon()` object on every call**, and were called directly from JSX
+on every render of `RapidMap` — once per marker, per render. react-leaflet's
+`Marker` component compares the `icon` prop **by reference**; a new object
+every render means it calls Leaflet's `setIcon()`, which tears down and
+rebuilds that marker's DOM node, every time, for every marker, whether
+anything about the marker actually changed or not.
+
+Measured before any fix:
+
+| Metric | Rate |
+|---|---:|
+| `droneIcon()` calls (5 drone markers) | 19.8/s |
+| `incidentIcon()` calls (~17 incidents) | 67.2/s |
+| **Marker DOM nodes added/removed** (`MutationObserver`, ground truth) | **89.1/s** |
+
+Both call rates track `mapRender` x marker count almost exactly (4/s x 5 = 20,
+4/s x ~17 = 68), confirming every render rebuilt every icon regardless of
+whether that marker's data changed.
+
+### Fix
+
+Cache the constructed `L.divIcon` by its visual inputs instead of rebuilding
+on every call:
+- `incidentIcon(severity)` — cached by `severity` (already a small, finite set)
+- `droneIcon(heading, status)` — cached by `` `${status}|${headingBucket}` ``,
+  where heading is rounded to the nearest 15 degrees before use as a key
+
+Heading is continuous (0-359.99...), so caching by the exact float would never
+hit — no two ticks are bit-for-bit equal. Rounding to 15-degree buckets (24
+buckets total) is not visually distinguishable on a 34px static arrow icon; it
+only stops rebuilding the icon for a heading change nobody can see. Confirmed
+by direct visual screenshot comparison.
+
+### Result
+
+| Metric | Before | After |
+|---|---:|---:|
+| `droneIcon()` calls (steady state) | 19.8/s | **0/s** |
+| `incidentIcon()` calls (steady state) | 67.2/s | **0/s** |
+| **Marker DOM nodes added/removed** | **89.1/s** | **0.0/s** |
+
+The measured bottleneck — marker DOM churn — is eliminated, not reduced.
+
+### Honest negative finding
+
+Chrome's coarse CDP page metrics (`LayoutCount`, `RecalcStyleCount`,
+`ScriptDuration`, `TaskDuration`) showed **no measurable difference**
+before/after (e.g. `RecalcStyleCount` 977 vs 990 over the same 20s window).
+These are dominated by continuous `animate-pulse`/`animate-ping` CSS
+animations used elsewhere throughout the UI (base station markers, status
+dots, recording indicators), which run regardless of this fix. The
+`MutationObserver` count is the correct, causally-direct metric for what
+this fix actually changed; the coarse page-level metrics are simply too
+noisy to isolate it. Reported both rather than only the flattering one.
+
+### Deliberately not done, and why
+
+Per the plan, `React.memo`-wrapping individual map markers and memoizing the
+`getVisibleDrones`/`getVisibleStats` selectors were both proposed as
+follow-ups. Once the icon cache eliminated the measured marker DOM churn to
+zero, profiling showed no remaining bottleneck these would address — the
+selectors run cheap array operations over ~22 items, and react-leaflet's own
+reference check already skips the expensive `setIcon()` work now that the
+icon reference is stable. Adding memoization with no measured problem to
+fix would be exactly the "blindly add memo everywhere" this plan explicitly
+rules out. Not implemented.
+
+Batching server-pushed WebSocket frames (one message per tick instead of one
+per changed drone) was the other deferred item. The render *count* itself
+(~4-5/s in this test, ~20/s at full fleet load per Step 1) is unchanged by
+this work, but it is now cheap: no DOM teardown, no icon allocation. Since
+the quantified bottleneck is resolved, this protocol-level change was not
+implemented. It remains available as a future step if further reduction in
+render frequency itself becomes necessary.
+
+### Lint: 7 `react-hooks/set-state-in-effect` warnings fixed
+
+Step 1 found these; Step 3 fixed all 7, across `Analytics.jsx`, `Fleet.jsx`,
+`Incidents.jsx` (2), `RLConsole.jsx`, `SecurityAudit.jsx`, `Surveillance.jsx`.
+
+Two distinct root causes:
+
+1. **Six instances**: a `fetch`-and-`setState` function declared in the
+   component's outer scope, called directly as the first statement of a
+   `useEffect`. Verified empirically (by testing against the installed
+   `eslint-plugin-react-hooks@7.1.1`) that this specific rule flags a call
+   from an effect to an *outer-scoped* function reaching setState,
+   regardless of intervening `await`s, but does **not** flag the same
+   logic when the function is declared **inside** the effect body as a
+   local closure. Fixed by moving the fetch/poll implementation inline
+   (or, where the function is also called from an event handler, wrapping
+   the effect's own invocation in a small effect-local `sync`/`poll`
+   function). This is also React's own documented data-fetching effect
+   pattern (an `ignore` flag against stale responses and unmount), so the
+   fix is a genuine correctness improvement, not just a lint workaround.
+
+2. **One instance** (`Incidents.jsx`): a literal, unconditional
+   `setActiveTab('overview')` called synchronously inside an effect
+   whenever `selectedIncident` changed — the textbook case the rule
+   targets. Fixed by moving that call to the one event handler that
+   actually sets `selectedIncident` to a new value (opening the incident
+   dossier), removing the derived-state effect entirely.
+
+Verified: `npm run lint` (now `--max-warnings 0` again, restored as the
+project default) exits 0. All 6 modified pages checked with a headless
+browser for console/page errors after the refactor — zero. The
+`Incidents.jsx` modal was screenshotted after the `setActiveTab` relocation
+and confirmed to still open on the "Summary" tab, matching prior behaviour.

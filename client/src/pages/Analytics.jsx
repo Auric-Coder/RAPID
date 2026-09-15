@@ -23,26 +23,30 @@ function Analytics() {
     droneUsage: []
   });
 
-  const fetchMetrics = async () => {
-    try {
-      const summaryRes = await fetch('/api/metrics/summary');
-      const chartRes = await fetch('/api/metrics/historical');
-
-      if (summaryRes.ok && chartRes.ok) {
-        const summaryData = await summaryRes.json();
-        const chartData = await chartRes.json();
-        setSummary(summaryData);
-        setCharts(chartData);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   useEffect(() => {
+    let ignore = false;
+
+    const fetchMetrics = async () => {
+      try {
+        const summaryRes = await fetch('/api/metrics/summary');
+        const chartRes = await fetch('/api/metrics/historical');
+
+        if (ignore) return;
+        if (summaryRes.ok && chartRes.ok) {
+          const summaryData = await summaryRes.json();
+          const chartData = await chartRes.json();
+          if (ignore) return;
+          setSummary(summaryData);
+          setCharts(chartData);
+        }
+      } catch (err) {
+        if (!ignore) console.error(err);
+      }
+    };
+
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 3000);
-    return () => clearInterval(interval);
+    return () => { ignore = true; clearInterval(interval); };
   }, []);
 
   return (

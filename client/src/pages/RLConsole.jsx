@@ -56,10 +56,23 @@ function RLConsole() {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // refresh is also called from switchMode/triggerTraining after an action
+  // completes, so it stays a shared useCallback rather than moving inline -
+  // these two effects each wrap it in a small effect-local function instead,
+  // which also lets the poll stop cleanly if the component unmounts
+  // mid-request instead of setting state afterwards.
   useEffect(() => {
-    const interval = setInterval(refresh, 4000);
-    return () => clearInterval(interval);
+    let ignore = false;
+    const sync = async () => { if (!ignore) await refresh(); };
+    sync();
+    return () => { ignore = true; };
+  }, [refresh]);
+
+  useEffect(() => {
+    let ignore = false;
+    const poll = async () => { if (!ignore) await refresh(); };
+    const interval = setInterval(poll, 4000);
+    return () => { ignore = true; clearInterval(interval); };
   }, [refresh]);
 
   const callSignFor = (droneId) => drones.find(d => d.id === droneId)?.call_sign || droneId?.slice(0, 8) || '—';

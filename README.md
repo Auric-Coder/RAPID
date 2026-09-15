@@ -1,20 +1,20 @@
 <<<<<<< HEAD
 # RAPID
 =======
-﻿# 🚁 R.A.P.I.D. v1.3
+﻿# R.A.P.I.D. v1.3
 
 > **Real-time Autonomous Police & Incident Dispatch System**  
 > A mission-critical drone fleet management and emergency dispatch simulation platform designed for law enforcement, emergency responders, and multi-agency coordination.
 
 ---
 
-## 🌟 Overview
+##  Overview
 
 R.A.P.I.D. models an end-to-end aerial dispatch pipeline across a national geographic hierarchy (**Nation → State → District → Base → Drone**). It features a real-time web command center, live GPS telemetry simulation, intelligent fleet decision scoring, tamper-evident cryptographic audit logs, and a mobile application for citizen SOS intake.
 
 ---
 
-## 🏗️ Architecture & Tech Stack
+##  Architecture & Tech Stack
 
 | Component | Stack | Responsibilities |
 |---|---|---|
@@ -25,18 +25,18 @@ R.A.P.I.D. models an end-to-end aerial dispatch pipeline across a national geogr
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-- **🌐 Live Telemetry Physics Engine**: 1-second ticks running Haversine geodesic math, real headings, speed, altitude, and a distance-proportional battery consumption model (cruise vs. hover drain).
-- **🤖 Deterministic Fleet Decision Engine**: Evaluates available fleet assets by distance, flight feasibility, battery reserve thresholds, and airspace restrictions to recommend optimal drone assignments.
-- **🧠 AI & Reinforcement Learning Console**: Markov Decision Process (MDP) observation space and action masks built with TensorFlow.js for assisted and autonomous dispatch exploration.
-- **🔒 Tamper-Evident Evidence Logging**: Incident snapshots, recordings, and administrative events are sealed using a continuous SHA-256 cryptographic hash-chain ledger.
-- **👥 Role-Based Access Control (RBAC)**: Secure httpOnly cookie JWT auth supporting 8 hierarchical roles (`NATIONAL_COMMANDER`, `STATE_COMMANDER`, `OPERATOR`, `AIRSPACE_AUTHORITY`, etc.) with geographic boundary filtering.
-- **📱 Citizen Emergency Intake**: Public SOS button with GPS lock, audio recording, NLP classification, and real-time drone ETA tracking.
+- ** Live Telemetry Physics Engine**: 1-second ticks running Haversine geodesic math, real headings, speed, altitude, and a distance-proportional battery consumption model (cruise vs. hover drain).
+- ** Deterministic Fleet Decision Engine**: Evaluates available fleet assets by distance, flight feasibility, battery reserve thresholds, and airspace restrictions to recommend optimal drone assignments.
+- ** AI & Reinforcement Learning Console**: Markov Decision Process (MDP) observation space and action masks built with TensorFlow.js for assisted and autonomous dispatch exploration.
+- ** Tamper-Evident Evidence Logging**: Incident snapshots, recordings, and administrative events are sealed using a continuous SHA-256 cryptographic hash-chain ledger.
+- ** Role-Based Access Control (RBAC)**: Secure httpOnly cookie JWT auth supporting 8 hierarchical roles (`NATIONAL_COMMANDER`, `STATE_COMMANDER`, `OPERATOR`, `AIRSPACE_AUTHORITY`, etc.) with geographic boundary filtering.
+- **Citizen Emergency Intake**: Public SOS button with GPS lock, audio recording, NLP classification, and real-time drone ETA tracking.
 
 ---
 
-## 🚀 Getting Started (Local Development)
+##  Getting Started (Local Development)
 
 ### Prerequisites
 - **Node.js**: v18.0.0 or higher
@@ -101,7 +101,7 @@ cd mobile && npx expo start
 
 ---
 
-## 🔐 Default Demo Accounts
+##  Default Demo Accounts
 
 All demo accounts share the password: `rapid123`
 
@@ -116,7 +116,7 @@ All demo accounts share the password: `rapid123`
 
 ---
 
-## 📁 Repository Layout
+##  Repository Layout
 
 ```
 ├── client/                   # React 18 + Vite frontend application
@@ -150,7 +150,7 @@ All demo accounts share the password: `rapid123`
 
 ---
 
-## 📦 Building for Production & Cloud Deployment
+##  Building for Production & Cloud Deployment
 
 ### 1. Build Production Assets
 ```bash
@@ -172,6 +172,6 @@ This compiles the React client bundle into `client/dist/`, which is directly ser
 
 ---
 
-## 📄 License
+##  License
 This project is proprietary and confidential. Developed for demonstration, evaluation, and operational prototyping.
 >>>>>>> d0c2cae (Public Repository Initialized)

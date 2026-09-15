@@ -88,11 +88,6 @@ function Fleet() {
       {/* Main Drones Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {drones.map((drone) => {
-          const batteryColor = drone.battery_level > 60
-            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-            : drone.battery_level > 20
-            ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-            : 'text-red-400 bg-red-500/10 border-red-500/20 animate-pulse';
 
           const batteryBar = drone.battery_level > 60
             ? 'bg-emerald-500'

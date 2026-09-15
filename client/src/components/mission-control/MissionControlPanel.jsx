@@ -30,7 +30,6 @@ export default function MissionControlPanel() {
   // Camera
   const cameraMode = useRapidStore(s => s.cameraMode);
   const handleCameraMode = useRapidStore(s => s.handleCameraMode);
-  const isFullscreen = useRapidStore(s => s.isFullscreen);
   const toggleFullscreen = useRapidStore(s => s.toggleFullscreen);
   const isNightVisionActive = useRapidStore(s => s.isNightVisionActive);
   const handleSnapshot = useRapidStore(s => s.handleSnapshot);

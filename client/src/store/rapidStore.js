@@ -6,7 +6,6 @@
  */
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { haversineDistance } from '../config/geoConfig';
 
 const ACTIVE_STATUSES = ['Dispatched', 'En Route', 'On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Awaiting Controller', 'Returning', 'Patrolling'];
 
@@ -536,7 +535,6 @@ const useRapidStore = create(
 
     // ── WebSocket Handlers ──
     handleWsMessage: (msg) => {
-      const state = get();
       if (msg.type === 'drone_update') {
         set(s => {
           const idx = s.drones.findIndex(d => d.id === msg.payload.id);

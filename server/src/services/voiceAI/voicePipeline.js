@@ -1,10 +1,9 @@
 /**
- * RAPID Voice AI — Pipeline Orchestrator (Phase 3, agentic upgrade)
+ * RAPID Voice AI — Pipeline Orchestrator
  *
- * Voice Input -> STT -> Classification -> Structured Incident, matching
- * architecture Section 7.1/7.2. AI classification is always a
- * recommendation — the caller decides whether to act on it; the
- * controller remains the final authority per R14.
+ * Voice Input -> STT -> Classification -> Structured Incident. AI
+ * classification is always a recommendation — the caller decides
+ * whether to act on it; the controller remains the final authority.
  *
  * Classification now prefers the real LLM-driven citizenIntakeAgent
  * (see agents/citizenIntakeAgent.js) when Azure OpenAI is configured
@@ -38,7 +37,7 @@ function sha256(text) {
  * @param {string|null} input.citizenMedicalInfo - Optional, from the
  *   caller's already-authenticated citizen profile. Only meaningful on
  *   the agent path; the deterministic fallback has no use for it.
- * @returns {Promise<object>} VoiceClassificationResult (architecture Section 7.2)
+ * @returns {Promise<object>} VoiceClassificationResult
  */
 async function process({ transcript = null, audioBase64 = null, latitude, longitude, citizenMedicalInfo = null } = {}) {
   const startedAt = Date.now();
@@ -75,7 +74,7 @@ async function process({ transcript = null, audioBase64 = null, latitude, longit
       locationMentionCoordinates = agentResult.resolvedCoordinates;
       aiEngine = 'azure-openai-agent';
     } catch (err) {
-      console.error('🤖 Citizen intake agent failed, falling back to deterministic classifier:', err.message);
+      console.error('Citizen intake agent failed, falling back to deterministic classifier:', err.message);
     }
   }
 

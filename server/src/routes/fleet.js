@@ -17,12 +17,11 @@ const { requireRole } = require('../middleware/auth');
 const DISPATCH_ROLES = ['NATIONAL_COMMANDER', 'STATE_COMMANDER', 'DISTRICT_COMMANDER', 'BASE_COMMANDER', 'DISPATCHER', 'OPERATOR'];
 
 /**
- * RAPID Fleet Intelligence Routes — Command 3
+ * RAPID Fleet Intelligence Routes
  *
  * Provides fleet evaluation, energy status, dispatch decisions,
  * and controller override logging.
  *
- * LABEL: "RAPID Fleet Decision Engine"
  * This is deterministic decision-support, NOT reinforcement learning.
  */
 
@@ -148,10 +147,10 @@ router.post('/override', requireRole(...DISPATCH_ROLES), async (req, res) => {
       return res.status(400).json({ error: 'Selected Rakshak not found in fleet evaluation.' });
     }
 
-    // Phase 5: airspace is a hard constraint (absolute/conditional
-    // zones) — unlike the battery check below, no force flag can
-    // bypass a blocked route. Zones come from db.airspaceZones (Phase
-    // 5's live source of truth), not static config.
+    // Airspace is a hard constraint (absolute/conditional zones) —
+    // unlike the battery check below, no force flag can bypass a
+    // blocked route. Zones come from db.airspaceZones (the live
+    // source of truth), not static config.
     const droneStateCode = await environment.resolveStateCodeForBase(selectedDrone.base_id);
     const droneState = droneStateCode ? await db.states.get(droneStateCode) : null;
     const droneZones = droneState ? await db.airspaceZones.list({ stateId: droneState.id, activeOnly: true }) : [];
@@ -294,8 +293,8 @@ router.post('/reassign', requireRole(...DISPATCH_ROLES), async (req, res) => {
     });
     websocketService.broadcastIncidentUpdate(reassignedIncident);
 
-    // Phase 2: the drone's original mission never reached a clean outcome
-    // (it was redirected mid-flight) — this replaces that pending tuple
+    // The drone's original mission never reached a clean outcome (it
+    // was redirected mid-flight) — this replaces that pending tuple
     // with a fresh one for the new mission rather than trying to salvage it.
     await environment.beginExperience(droneId, { incidentId: newIncidentId, action: 'REASSIGN' });
 

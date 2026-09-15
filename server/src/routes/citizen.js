@@ -6,14 +6,13 @@ const websocketService = require('../services/websocketService');
 const voicePipeline = require('../services/voiceAI/voicePipeline');
 
 /**
- * RAPID Citizen Mobile API — Phase 3
+ * RAPID Citizen Mobile API
  *
  * Mounted at /api/v1/citizen. Backs the RAPID Citizen React Native app
  * (see /mobile). Auth is a deliberate placeholder — a token is just the
  * base64 of the profile id, verified by looking the profile up. No
- * password check, no expiry, no signing. This is explicitly sanctioned
- * for pre-Phase-6 work by the architecture doc's open question #2
- * ("defer auth to Phase 6, use mock auth for earlier phases") — do not
+ * password check, no expiry, no signing. Organisation users get real
+ * auth (see services/auth/authService.js); this is not that — do not
  * treat this as a security boundary, and do not copy this pattern into
  * anything that isn't citizen-facing demo data.
  */
@@ -171,7 +170,7 @@ router.post('/emergency', requireCitizenAuth, async (req, res) => {
     try {
       dispatchResult = await dispatchService.autoDispatch(incident.id);
     } catch (dispatchErr) {
-      console.error(`⚠️ Citizen app dispatch failed: ${dispatchErr.message}`);
+      console.error(`Citizen app dispatch failed: ${dispatchErr.message}`);
     }
 
     res.status(201).json({

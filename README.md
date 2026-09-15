@@ -1,177 +1,165 @@
-<<<<<<< HEAD
 # RAPID
-=======
-﻿# R.A.P.I.D. v1.3
 
-> **Real-time Autonomous Police & Incident Dispatch System**  
-> A mission-critical drone fleet management and emergency dispatch simulation platform designed for law enforcement, emergency responders, and multi-agency coordination.
+A drone fleet management and emergency dispatch platform for police and government agencies. It runs a simulated fleet of drones across a national geographic hierarchy (Nation → State → District → Base → Drone), with a web command centre for operators and a public citizen SOS portal.
 
 ---
 
-##  Overview
+## Tech Stack
 
-R.A.P.I.D. models an end-to-end aerial dispatch pipeline across a national geographic hierarchy (**Nation → State → District → Base → Drone**). It features a real-time web command center, live GPS telemetry simulation, intelligent fleet decision scoring, tamper-evident cryptographic audit logs, and a mobile application for citizen SOS intake.
-
----
-
-##  Architecture & Tech Stack
-
-| Component | Stack | Responsibilities |
+| Component | Stack | Purpose |
 |---|---|---|
-| **Web Command Center** (`client/`) | React 18, Vite, Tailwind CSS, Leaflet, Recharts, Zustand | Operations map, live telemetry tracking, fleet inventory, patrol routing, analytics |
-| **Simulation & API Server** (`server/`) | Node.js, Express, WebSocket (`ws`), TensorFlow.js | Physics & battery model, REST API (15 modules), auto-dispatch engine, WebSocket hub |
-| **Citizen Mobile App** (`mobile/`) | React Native, Expo, Expo Router | One-tap SOS emergency trigger, voice/text reporting, live responder drone tracking |
-| **Database** (`supabase/`) | Supabase (PostgreSQL 15+ with RLS) | Relational persistence, RBAC accounts, airspace zones, audit trail, in-memory fallback |
+| Web Command Centre (`client/`) | React 18, Vite, Tailwind CSS, Leaflet, Recharts, Zustand | Operations map, live telemetry, fleet inventory, patrol routing, analytics |
+| API Server (`server/`) | Node.js, Express, WebSocket (`ws`), TensorFlow.js | Physics and battery model, REST API (15 modules), auto-dispatch engine, WebSocket hub |
+| Citizen Mobile App (`mobile/`) | React Native, Expo, Expo Router | One-tap SOS trigger, voice/text reporting, live drone tracking |
+| Database (`supabase/`) | Supabase (PostgreSQL 15 with RLS) | Relational persistence, RBAC accounts, airspace zones, audit trail, in-memory fallback |
 
 ---
 
-##  Key Features
-
-- ** Live Telemetry Physics Engine**: 1-second ticks running Haversine geodesic math, real headings, speed, altitude, and a distance-proportional battery consumption model (cruise vs. hover drain).
-- ** Deterministic Fleet Decision Engine**: Evaluates available fleet assets by distance, flight feasibility, battery reserve thresholds, and airspace restrictions to recommend optimal drone assignments.
-- ** AI & Reinforcement Learning Console**: Markov Decision Process (MDP) observation space and action masks built with TensorFlow.js for assisted and autonomous dispatch exploration.
-- ** Tamper-Evident Evidence Logging**: Incident snapshots, recordings, and administrative events are sealed using a continuous SHA-256 cryptographic hash-chain ledger.
-- ** Role-Based Access Control (RBAC)**: Secure httpOnly cookie JWT auth supporting 8 hierarchical roles (`NATIONAL_COMMANDER`, `STATE_COMMANDER`, `OPERATOR`, `AIRSPACE_AUTHORITY`, etc.) with geographic boundary filtering.
-- **Citizen Emergency Intake**: Public SOS button with GPS lock, audio recording, NLP classification, and real-time drone ETA tracking.
-
----
-
-##  Getting Started (Local Development)
+## Getting Started
 
 ### Prerequisites
-- **Node.js**: v18.0.0 or higher
-- **npm**: v9.0.0 or higher
-- A **Supabase** account/project (free tier supported)
+- Node.js v18 or higher
+- npm v9 or higher
+- A Supabase account (free tier is fine)
 
-### 1. Clone & Install Dependencies
+### 1. Clone and install
+
 ```bash
-git clone https://github.com/<your-username>/rapid-v1.3.git
-cd rapid-v1.3
+git clone https://github.com/<your-username>/rapid.git
+cd rapid
 npm run bootstrap
 ```
-*(This command installs dependencies for both `server/` and `client/` concurrently).*
 
-To set up the mobile application:
+This installs dependencies for both `server/` and `client/` in one step.
+
+For the mobile app:
+
 ```bash
 cd mobile
 npm install
 cd ..
 ```
 
-### 2. Configure Environment Variables
-Copy the server example environment file:
+### 2. Configure environment variables
+
 ```bash
 cp server/.env.example server/.env
 ```
-Edit `server/.env` with your credentials:
+
+Edit `server/.env`:
+
 ```env
 JWT_SECRET=your_random_hex_secret_here
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_KEY=your_service_role_key_here
 PORT=5000
 ```
-> **Note**: Always use your Supabase **service_role** secret key (not the public anon key) and the base project URL (without `/rest/v1/`).
 
-### 3. Initialize Database
-1. Open your Supabase project dashboard -> **SQL Editor**.
-2. Run the script located in `supabase/schema.sql` (creates all 19 tables).
-3. Start the server (Step 4). On first boot, the server will **automatically seed** the full geographic hierarchy (Goa & Punjab), bases, airspace zones, demo accounts, and all 22 drones.
+Use the Supabase **service_role** key (not the public anon key) and the base project URL without `/rest/v1/`.
 
-### 4. Run Locally
-Start both the backend API and the frontend dashboard concurrently:
+### 3. Initialise the database
+
+1. Open your Supabase project dashboard → **SQL Editor**.
+2. Run `supabase/schema.sql` (creates all 19 tables).
+3. On first boot, the server automatically seeds the geographic hierarchy (Goa and Punjab), bases, airspace zones, demo accounts, and all 22 drones.
+
+### 4. Run locally
+
 ```bash
 npm run dev
 ```
 
-Or run services individually:
+Or individually:
+
 ```bash
-# Terminal 1: Backend API & Telemetry Simulator (:5000)
+# Terminal 1: API server and telemetry simulator (port 5000)
 npm run server
 
-# Terminal 2: Web Command Center (:3000)
+# Terminal 2: Web command centre (port 3000)
 npm run client
 
-# Terminal 3: Citizen Mobile App (Expo)
+# Terminal 3: Citizen mobile app (Expo)
 cd mobile && npx expo start
 ```
 
-- **Web Dashboard**: [http://localhost:3000](http://localhost:3000)
-- **API Health Check**: [http://localhost:5000/health](http://localhost:5000/health)
-- **Citizen Portal (Web)**: [http://localhost:3000/help](http://localhost:3000/help)
+- Web dashboard: http://localhost:3000
+- API health check: http://localhost:5000/health
+- Citizen portal: http://localhost:3000/help
 
 ---
 
-##  Default Demo Accounts
+## Demo Accounts
 
-All demo accounts share the password: `rapid123`
+All demo accounts use the password `rapid123`.
 
-| Username | Role | Operational Scope |
+| Username | Role | Scope |
 |---|---|---|
-| `national.commander` | `NATIONAL_COMMANDER` | Full national visibility (all states & bases) |
-| `goa.commander` | `STATE_COMMANDER` | Goa state operations & fleet |
-| `punjab.commander` | `STATE_COMMANDER` | Punjab state operations & fleet |
-| `operator` | `OPERATOR` | Fleet command, manual flight override, dispatch |
-| `aviation.control` | `AIRSPACE_AUTHORITY` | Airspace restriction zones & no-fly management |
-| `observer` | `OBSERVER` | Read-only analytics & fleet audit monitoring |
+| `national.commander` | `NATIONAL_COMMANDER` | Full national visibility |
+| `goa.commander` | `STATE_COMMANDER` | Goa state |
+| `punjab.commander` | `STATE_COMMANDER` | Punjab state |
+| `operator` | `OPERATOR` | Fleet command, manual override, dispatch |
+| `aviation.control` | `AIRSPACE_AUTHORITY` | Airspace restriction zones |
+| `observer` | `OBSERVER` | Read-only analytics and audit |
 
 ---
 
-##  Repository Layout
+## Repository Layout
 
 ```
-├── client/                   # React 18 + Vite frontend application
+├── client/                   # React 18 + Vite frontend
 │   ├── src/
-│   │   ├── components/       # Map, TopCommandBar, mission panels, modals
+│   │   ├── components/       # Map, command bar, mission panels, modals
 │   │   ├── pages/            # Dashboard, Fleet, Incidents, Analytics, Surveillance, RLConsole
-│   │   └── store/            # Zustand global state & WebSocket listeners
-│   └── vite.config.js        # Vite dev server & proxy settings
+│   │   └── store/            # Zustand global state and WebSocket listeners
+│   └── vite.config.js
 │
-├── server/                   # Node.js + Express backend & simulation core
+├── server/                   # Node.js + Express backend
 │   ├── src/
-│   │   ├── config/           # Database adapter (Supabase), geoConfig, energyConfig
-│   │   ├── middleware/       # JWT auth & role authorization gates
-│   │   ├── routes/           # 15 REST endpoints (drones, incidents, fleet, rl, etc.)
+│   │   ├── config/           # Database adapter, geoConfig, energyConfig
+│   │   ├── middleware/       # JWT auth and role gates
+│   │   ├── routes/           # 15 REST endpoints
 │   │   ├── services/         # Simulator, decision engine, camera, voiceAI, security
 │   │   └── rl/               # MDP environment, policy definitions, mode manager
-│   └── .env.example          # Environment variable template
+│   └── .env.example
 │
-├── mobile/                   # React Native (Expo) Citizen SOS application
-│   ├── app/                  # Expo Router screens (SOS home, voice report, live track)
-│   └── src/                  # Citizen API client & storage context
+├── mobile/                   # React Native (Expo) citizen app
+│   ├── app/                  # Expo Router screens
+│   └── src/                  # API client and storage context
 │
-├── supabase/                 # PostgreSQL schema and seed migrations
-│   ├── schema.sql            # Core database schema (19 tables + RLS)
+├── supabase/
+│   ├── schema.sql            # Database schema (19 tables + RLS)
 │   └── seed.sql              # Reference seed queries
 │
-├── render.yaml               # One-click cloud deployment blueprint for Render
+├── render.yaml               # One-click deployment for Render
 ├── package.json              # Workspace scripts (bootstrap, dev, build, start)
-└── .gitignore                # Git ignore configuration
+└── .gitignore
 ```
 
 ---
 
-##  Building for Production & Cloud Deployment
+## Production Build and Deployment
 
-### 1. Build Production Assets
+### Build
+
 ```bash
 npm run build
 ```
-This compiles the React client bundle into `client/dist/`, which is directly served by the Express backend on a single origin.
 
-### 2. Deploy to Render (or Similar PaaS)
-1. Push this repository to GitHub.
-2. In [Render](https://render.com), click **New Web Service** and select your repository.
-3. Render will detect `render.yaml` automatically:
-   - **Build Command**: `npm run build`
-   - **Start Command**: `npm start`
-4. Set the following environment variables in your Render dashboard:
-   - `SUPABASE_URL`: `https://<your-project>.supabase.co`
-   - `SUPABASE_KEY`: `<your-supabase-service-role-key>`
-   - `JWT_SECRET`: `<your-random-jwt-secret>`
-   - `CORS_ORIGINS`: `https://<your-service>.onrender.com`
+Compiles the React client into `client/dist/`, which Express serves directly.
+
+### Deploy to Render
+
+1. Push to GitHub.
+2. In Render, create a new Web Service pointing to this repository.
+3. Render detects `render.yaml` automatically (build: `npm run build`, start: `npm start`).
+4. Set these environment variables in the Render dashboard:
+   - `SUPABASE_URL`
+   - `SUPABASE_KEY`
+   - `JWT_SECRET`
+   - `CORS_ORIGINS` (your Render service URL)
 
 ---
 
-##  License
-This project is proprietary and confidential. Developed for demonstration, evaluation, and operational prototyping.
->>>>>>> d0c2cae (Public Repository Initialized)
+## Licence
+
+Proprietary. Developed for demonstration and operational prototyping.

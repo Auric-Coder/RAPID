@@ -46,8 +46,8 @@ const dispatchService = {
   /**
    * Intelligent auto-dispatch using the RAPID Fleet Decision Engine.
    *
-   * Command 3 upgrade: replaces simple nearest-drone selection with
-   * full energy-feasibility evaluation and suitability scoring.
+   * Uses full energy-feasibility evaluation and suitability scoring
+   * rather than simple nearest-drone selection.
    *
    * Returns the full recommendation object for transparency.
    */
@@ -75,7 +75,7 @@ const dispatchService = {
     });
 
     if (recommendation.decision === 'NO_SAFE_RAKSHAK_AVAILABLE') {
-      console.log(`⚠️  Dispatch: No safe Rakshak available for "${incident.title}".`);
+      console.log(`Dispatch: No safe Rakshak available for "${incident.title}".`);
       return {
         success:      false,
         message:      recommendation.reason || 'No safe Rakshak available. Insufficient battery or all units active.',
@@ -93,7 +93,7 @@ const dispatchService = {
     const etaMin   = Math.floor(best.etaSeconds / 60);
     const etaSec   = best.etaSeconds % 60;
 
-    console.log(`\n🚀 RAPID Fleet Decision Engine — Dispatch:`);
+    console.log(`\nRAPID Fleet Decision Engine — Dispatch:`);
     console.log(`   Incident:   "${incident.title}" [${incident.severity.toUpperCase()}]`);
     console.log(`   Location:   [${incident.latitude.toFixed(4)}°N, ${incident.longitude.toFixed(4)}°E]`);
     console.log(`   Rakshak:    ${drone.call_sign} — Score: ${best.score}/100 (${best.suitabilityLabel})`);
@@ -118,8 +118,8 @@ const dispatchService = {
     });
     websocketService.broadcastIncidentUpdate(dispatchedIncident);
 
-    // Phase 2: open the experience tuple for this mission — closed out
-    // once the drone completes its mission (see simulatorService.js).
+    // Open the experience tuple for this mission — closed out once the
+    // drone completes its mission (see simulatorService.js).
     await environment.beginExperience(drone.id, {
       incidentId: incident.id,
       action: 'DISPATCH',

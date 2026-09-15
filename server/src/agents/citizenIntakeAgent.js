@@ -19,11 +19,9 @@
  * Memory: this agent has no memory across requests — every classify()
  * call starts a fresh conversation with no knowledge of past reports.
  * The one exception is `citizenMedicalInfo`, an optional single field
- * from the caller's already-authenticated citizen profile (see
- * routes/citizen.js's /emergency handler, which passes req.citizen's
- * medical_info). This is data minimization, not withheld memory — only
- * the one field actually relevant to severity assessment is passed in,
- * never the citizen's name, phone, or emergency contacts.
+ * from the caller's authenticated citizen profile. This is data
+ * minimisation: only the field relevant to severity assessment is passed
+ * in, never the citizen's name, phone, or emergency contacts.
  */
 const aiConfig = require('../config/aiConfig');
 const { INCIDENT_TEMPLATES } = require('../config/geoConfig');

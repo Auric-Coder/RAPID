@@ -1,5 +1,5 @@
 /**
- * RAPID Camera — Night Vision Controller (Phase 4)
+ * RAPID Camera — Night Vision Controller
  *
  * Server-side source of truth for whether night vision should be
  * active right now. The client already computed this identically

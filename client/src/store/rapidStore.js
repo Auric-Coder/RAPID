@@ -1,8 +1,7 @@
 /**
- * RAPID v1.3 — Centralised State Store (Zustand)
+ * RAPID — Centralised State Store (Zustand)
  *
- * Phase 0: Replaces 30+ useState declarations from Dashboard.jsx.
- * All state and handlers are centralised here for maintainability.
+ * All state and handlers for the command centre live here.
  */
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
@@ -67,13 +66,13 @@ const useRapidStore = create(
     wsConnected: false,
     wsRef: null,
 
-    // ── Geo Hierarchy (Phase 1) ──
+    // ── Geo Hierarchy ──
     activeState: 'GA',
     states: [],
     bases: [],
     mapConfigByState: {},
 
-    // ── Auth (Phase 6) ──
+    // ── Auth ──
     currentUser: null,
     authChecked: false,
     authError: null,
@@ -237,7 +236,7 @@ const useRapidStore = create(
           state.showFeedback('error', `Return Home unavailable: ${selectedDrone.call_sign} is already returning.`); return;
         }
         if (state.batteryStatus?.returnStatus === 'CRITICAL') {
-          state.showFeedback('warn', `⚠️ Critical battery — emergency return initiated for ${selectedDrone.call_sign}.`);
+          state.showFeedback('warn', `Critical battery — emergency return initiated for ${selectedDrone.call_sign}.`);
         }
       }
       if (command === 'dispatch' && selectedDrone.status !== 'Standby') {
@@ -285,13 +284,13 @@ const useRapidStore = create(
             gps: [selectedDrone.latitude, selectedDrone.longitude],
             heading: selectedDrone.heading, altitude: selectedDrone.altitude
           }, 'ok', selectedDrone.current_incident_id);
-          state.showFeedback('ok', `📸 Snapshot captured from ${selectedDrone.call_sign}.`);
+          state.showFeedback('ok', `Snapshot captured from ${selectedDrone.call_sign}.`);
           state.fetchData();
         }
       } catch (err) { state.showFeedback('error', 'Snapshot failed.'); }
     },
 
-    // ── PTT (Phase 4: backed by services/communication/communicationService.js) ──
+    // ── PTT (backed by services/communication/communicationService.js) ──
     pttStartedAt: null,
 
     fetchCommunicationSession: async (droneId) => {
@@ -413,9 +412,9 @@ const useRapidStore = create(
         if (!res.ok) { state.showFeedback('error', data.error || 'Override failed.'); return; }
 
         set({ overrideModal: null });
-        state.showFeedback('ok', `✓ ${candidate.callSign} dispatched by controller override.`);
+        state.showFeedback('ok', `${candidate.callSign} dispatched by controller override.`);
         state.fetchData();
-      } catch { state.showFeedback('error', 'Override request failed.'); }
+      } catch { state.showFeedback('error', 'Override request failed — check the network connection and try again.'); }
     },
 
     // ── Night Vision ──
@@ -581,7 +580,7 @@ const useRapidStore = create(
     setWsConnected: (v) => set({ wsConnected: v }),
     setWsRef: (ref) => set({ wsRef: ref }),
 
-    // ── Geo Hierarchy (Phase 1) ──
+    // ── Geo Hierarchy ──
     fetchGeoConfig: async () => {
       try {
         const [statesRes, basesRes] = await Promise.all([
@@ -623,7 +622,7 @@ const useRapidStore = create(
       if (visible.length > 0) get().selectDrone(visible[0]);
     },
 
-    // ── Auth (Phase 6) ──
+    // ── Auth ──
     checkAuth: async () => {
       try {
         const res = await fetch('/api/auth/me');

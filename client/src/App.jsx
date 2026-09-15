@@ -119,8 +119,7 @@ function MainLayout({ children }) {
   );
 }
 
-// RAPID v1.3 — Phase 6: gates the command-center routes behind the
-// httpOnly-cookie session. /help (citizen portal) stays public.
+// Gates command-centre routes behind the httpOnly-cookie session. /help stays public.
 function RequireAuth({ children }) {
   const currentUser = useRapidStore(s => s.currentUser);
   const authChecked = useRapidStore(s => s.authChecked);

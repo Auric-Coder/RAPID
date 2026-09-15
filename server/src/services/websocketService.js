@@ -1,7 +1,7 @@
 /**
- * RAPID v1.3 — WebSocket Broadcast Service
+ * RAPID — WebSocket Broadcast Service
  *
- * Phase 0: Provides real-time push to connected clients.
+ * Provides real-time push to connected clients.
  * Replaces HTTP polling for drone telemetry, incidents, and stats.
  */
 const WebSocket = require('ws');
@@ -17,18 +17,18 @@ const websocketService = {
     wss = new WebSocket.Server({ server, path: '/ws' });
 
     wss.on('connection', (ws) => {
-      console.log('🔌 WebSocket: Client connected. Total clients:', wss.clients.size);
+      console.log('WebSocket: Client connected. Total clients:', wss.clients.size);
 
       ws.on('close', () => {
-        console.log('🔌 WebSocket: Client disconnected. Total clients:', wss.clients.size);
+        console.log('WebSocket: Client disconnected. Total clients:', wss.clients.size);
       });
 
       ws.on('error', (err) => {
-        console.error('🔌 WebSocket error:', err.message);
+        console.error('WebSocket error:', err.message);
       });
     });
 
-    console.log('🔌 WebSocket Server: Initialised on /ws');
+    console.log('WebSocket Server: Initialised on /ws');
   },
 
   /**

@@ -31,7 +31,7 @@ export default function Login() {
             <Shield className="h-8 w-8 text-cyan-400" />
           </div>
           <h1 className="font-extrabold text-2xl tracking-wider text-white">R.A.P.I.D.</h1>
-          <p className="text-[11px] text-cyan-400 font-mono tracking-widest uppercase mt-1">Police Dispatch Command Login</p>
+          <p className="text-[11px] text-cyan-400 font-mono tracking-widest uppercase mt-1">Police Dispatch — Command Centre</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-[#111827] border border-[#1F2E45] rounded-xl p-6 space-y-4">
@@ -77,7 +77,7 @@ export default function Login() {
             disabled={submitting || !username || !password}
             className="w-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-semibold text-sm rounded-lg py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Authenticating…' : 'Sign In'}
+            {submitting ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
 

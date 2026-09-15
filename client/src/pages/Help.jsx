@@ -33,16 +33,18 @@ function Help() {
   const [searchParams, setSearchParams] = useSearchParams();
   const trackingId = searchParams.get('id');
 
-  // Form States
+  // Form states
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [category, setCategory] = useState('medical');
   const [gpsShared, setGpsShared] = useState(false);
-  const [coordinates, setCoordinates] = useState({ lat: 15.2993, lng: 74.1240 }); // Default Goa
+  const [coordinates, setCoordinates] = useState({ lat: 15.2993, lng: 74.1240 });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [formError, setFormError] = useState(null);
+  const [gpsError, setGpsError] = useState(null);
 
-  // Tracking States
+  // Tracking states
   const [incident, setIncident] = useState(null);
   const [drone, setDrone] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -74,9 +76,9 @@ function Help() {
             const droneData = await droneRes.json();
             setDrone(droneData);
 
-            // Compute basic ETA (distance / speed)
+            // Compute ETA in human-readable form
             if (['Dispatched', 'En Route', 'dispatching'].includes(droneData.status) && droneData.speed > 0) {
-              const R = 6371e3; // meters
+              const R = 6371e3;
               const lat1 = droneData.latitude;
               const lon1 = droneData.longitude;
               const lat2 = incData.latitude;
@@ -93,12 +95,10 @@ function Help() {
               const distance = R * c;
 
               const secondsRemaining = distance / droneData.speed;
-              const minutes = Math.floor(secondsRemaining / 60);
-              const seconds = Math.floor(secondsRemaining % 60);
-              
-              setEta(`${minutes}m ${seconds}s`);
+              const minutes = Math.ceil(secondsRemaining / 60);
+              setEta(minutes <= 1 ? 'less than a minute away' : `about ${minutes} minutes away`);
             } else if (['On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'on_site'].includes(droneData.status)) {
-              setEta('ARRIVED ON SITE');
+              setEta('at your location');
             } else {
               setEta(null);
             }
@@ -117,11 +117,11 @@ function Help() {
     return () => clearInterval(interval);
   }, [trackingId]);
 
-  // Request browser GPS position
   const requestLocation = () => {
     setGpsLoading(true);
+    setGpsError(null);
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setGpsError('Location is not available on this device.');
       setGpsLoading(false);
       return;
     }
@@ -137,7 +137,7 @@ function Help() {
       },
       (error) => {
         console.error(error);
-        // Fallback: Pick a coordinate near Goa center
+        // Fallback: approximate location near Goa centre
         const offsetLat = (Math.random() - 0.5) * 0.05;
         const offsetLng = (Math.random() - 0.5) * 0.05;
         setCoordinates({ lat: 15.2993 + offsetLat, lng: 74.1240 + offsetLng });
@@ -148,11 +148,11 @@ function Help() {
     );
   };
 
-  // Submit emergency
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setFormError(null);
     if (!name || !phone || !gpsShared) {
-      alert('Please fill in your details and share your GPS location.');
+      setFormError('Please fill in your name, phone number, and share your location.');
       return;
     }
 
@@ -173,11 +173,11 @@ function Help() {
         })
       });
 
-      if (!response.ok) throw new Error('Submission failed');
+      if (!response.ok) throw new Error('Your report could not be sent. Please try again.');
       const data = await response.json();
       setSearchParams({ id: data.incident.id });
     } catch (err) {
-      alert(err.message);
+      setFormError(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -195,10 +195,10 @@ function Help() {
 
   return (
     <div className="min-h-screen bg-[#070B14] text-white flex flex-col items-center justify-center p-4">
-      {/* Top Banner Branding */}
+      {/* Header */}
       <div className="w-full max-w-md flex items-center justify-center gap-3 mb-6">
         <ShieldAlert className="h-8 w-8 text-orange-500 animate-pulse" />
-        <h1 className="text-xl font-bold font-mono tracking-widest text-white uppercase">RAPID Help Portal</h1>
+        <h1 className="text-xl font-bold font-mono tracking-widest text-white uppercase">Emergency Help</h1>
       </div>
 
       <AnimatePresence mode="wait">
@@ -213,8 +213,8 @@ function Help() {
             <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-orange-500 to-red-500"></div>
 
             <div className="mb-6">
-              <h2 className="text-lg font-bold">Request Police Intervention</h2>
-              <p className="text-xs text-gray-400 mt-1">Submit your details. An autonomous response drone will be dispatched immediately.</p>
+              <h2 className="text-lg font-bold">Request emergency help</h2>
+              <p className="text-xs text-gray-400 mt-1">Fill in your details and tap Send for Help. Keep this page open to track the response.</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -249,18 +249,18 @@ function Help() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase text-gray-400 mb-1">Emergency Category</label>
+                <label className="block text-xs font-mono uppercase text-gray-400 mb-1">Type of emergency</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full bg-[#1F2937] border border-gray-700 focus:border-orange-500 focus:outline-none rounded-xl px-3 py-2.5 text-sm"
                 >
-                  <option value="medical">🚑 Medical Distress / Accident</option>
-                  <option value="assault">⚠️ Threat / Active Assault</option>
-                  <option value="theft">🎒 Robbery / Shoplifting</option>
-                  <option value="fire">🔥 Fire Outbreak</option>
-                  <option value="trespass">🚪 Break-In / Trespassing</option>
-                  <option value="other">❓ Other Emergency</option>
+                  <option value="medical">Medical emergency or accident</option>
+                  <option value="assault">Assault or active threat</option>
+                  <option value="theft">Robbery</option>
+                  <option value="fire">Fire</option>
+                  <option value="trespass">Break-in or trespassing</option>
+                  <option value="other">Other emergency</option>
                 </select>
               </div>
 
@@ -277,18 +277,23 @@ function Help() {
                   <MapPin className={`h-4 w-4 ${gpsLoading ? 'animate-bounce' : ''}`} />
                   <span>
                     {gpsLoading
-                      ? 'Acquiring GPS Lock...'
+                      ? 'Finding your location…'
                       : gpsShared
-                      ? 'GPS Location Latched'
-                      : 'Share My GPS Location'}
+                      ? 'Location found'
+                      : 'Share my location'}
                   </span>
                 </button>
                 {gpsShared && (
-                  <p className="text-[10px] text-center text-gray-500 font-mono mt-1">
-                    LAT: {coordinates.lat.toFixed(6)}, LNG: {coordinates.lng.toFixed(6)}
-                  </p>
+                  <p className="text-[10px] text-center text-emerald-500 font-mono mt-1">Location confirmed.</p>
+                )}
+                {gpsError && (
+                  <p className="text-[10px] text-center text-red-400 font-mono mt-1">{gpsError}</p>
                 )}
               </div>
+
+              {formError && (
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{formError}</p>
+              )}
 
               <button
                 type="submit"
@@ -296,11 +301,11 @@ function Help() {
                 className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold py-3.5 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-orange-500/20"
               >
                 {isSubmitting ? (
-                  <span>Dispatching System...</span>
+                  <span>Sending…</span>
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    <span>BROADCAST EMERGENCY</span>
+                    <span>Send for Help</span>
                   </>
                 )}
               </button>
@@ -316,7 +321,7 @@ function Help() {
           >
             <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-4">
               <div>
-                <span className="text-[10px] text-orange-400 font-mono tracking-widest uppercase">Emergency Latched</span>
+                <span className="text-[10px] text-orange-400 font-mono tracking-widest uppercase">Your report was received</span>
                 <h2 className="text-sm font-mono text-gray-400 font-semibold mt-0.5 truncate max-w-[200px]">ID: {trackingId}</h2>
               </div>
               <div className="bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20 flex items-center gap-1.5">
@@ -325,13 +330,12 @@ function Help() {
               </div>
             </div>
 
-            {/* Stepper progress pipeline */}
             {incident && (
               <div className="grid grid-cols-4 gap-2 mb-6">
                 {[
-                  { key: 'reported', label: 'Reported' },
-                  { key: 'dispatched', label: 'En-Route' },
-                  { key: 'active', label: 'Hovering' },
+                  { key: 'reported', label: 'Report sent' },
+                  { key: 'dispatched', label: 'On the way' },
+                  { key: 'active', label: 'At your location' },
                   { key: 'resolved', label: 'Resolved' }
                 ].map((step, idx) => {
                   const currentIdx = getStatusStep(incident.status);
@@ -398,19 +402,18 @@ function Help() {
                     </div>
                     {eta && (
                       <span className="text-xs font-mono bg-cyan-950/40 text-cyan-400 px-2 py-0.5 border border-cyan-500/20 rounded font-semibold">
-                        ETA: {eta}
+                        {eta}
                       </span>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-400">
-                    <p>Cruising Speed: <span className="text-white">{drone.speed.toFixed(1)} m/s</span></p>
-                    <p>Cruising Altitude: <span className="text-white">{drone.altitude.toFixed(0)}m</span></p>
+                    <p>On its way to you</p>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-4 text-center">
                   <AlertTriangle className="h-5 w-5 text-orange-500 animate-bounce mb-1" />
-                  <p className="text-xs text-gray-400">Waiting to latch matching responder drone...</p>
+                  <p className="text-xs text-gray-400">A responder has been alerted. You'll see it here when it's on the way.</p>
                 </div>
               )}
             </div>
@@ -434,7 +437,7 @@ function Help() {
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-gray-950 text-gray-400">
                     <Activity className="h-8 w-8 text-cyan-500 animate-pulse mb-2" />
-                    <span className="text-[11px] font-mono tracking-widest text-cyan-500 animate-pulse uppercase">Establishing Secured Feed Link...</span>
+                    <span className="text-[11px] font-mono tracking-widest text-cyan-500 animate-pulse uppercase">Connecting…</span>
                   </div>
                 )}
               </div>
@@ -442,7 +445,7 @@ function Help() {
 
             {/* Event log feed */}
             <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-              <span className="text-[10px] font-mono text-gray-500 block uppercase mb-1">Dispatch log Trail</span>
+              <span className="text-[10px] font-mono text-gray-500 block uppercase mb-1">Updates</span>
               {logs.map((log) => (
                 <div key={log.id} className="flex gap-2 text-[11px] font-mono border-l border-gray-800 pl-3 py-0.5">
                   <span className="text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
@@ -451,7 +454,7 @@ function Help() {
                 </div>
               ))}
               {logs.length === 0 && (
-                <p className="text-[11px] font-mono text-gray-600">Incident registered. Waiting for dispatcher logs...</p>
+                <p className="text-[11px] font-mono text-gray-600">Your report has been logged. Updates will appear here.</p>
               )}
             </div>
           </motion.div>

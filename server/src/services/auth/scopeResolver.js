@@ -1,11 +1,11 @@
 /**
- * RAPID Auth — Scope Resolver (Phase 6)
+ * RAPID Auth — Scope Resolver
  *
  * Turns a JWT payload's {organisationId, scopeType, scopeId} into the
  * concrete set of base ids (and, derived from those, state ids) a user
- * is allowed to see — the actual enforcement of R02's "Organisation A
- * cannot see Organisation B's resources" plus the National -> State ->
- * District -> Base scope hierarchy from Section 2.2.
+ * is allowed to see — enforcing both "Organisation A cannot see
+ * Organisation B's resources" and the National -> State -> District ->
+ * Base scope hierarchy.
  */
 const db = require('../../config/database');
 

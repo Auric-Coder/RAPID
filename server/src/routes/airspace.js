@@ -14,14 +14,14 @@ function actorFrom(req) {
 }
 
 /**
- * RAPID Airspace Routes — Phase 5
+ * RAPID Airspace Routes
  * Mounted at /api/airspace. See services/airspace/airspaceManager.js.
  */
 
-// Per architecture Section 2.1: Aviation Control "can issue airspace
-// restrictions visible to ALL organisations." Commanders can too, for
-// their own organisation's operating area (e.g. a state police
-// commander declaring a temporary restriction around an incident).
+// Aviation Control can issue airspace restrictions visible to ALL
+// organisations. Commanders can too, for their own organisation's
+// operating area (e.g. a state police commander declaring a temporary
+// restriction around an incident).
 const ZONE_WRITE_ROLES = ['AIRSPACE_AUTHORITY', 'NATIONAL_COMMANDER', 'STATE_COMMANDER'];
 
 // GET /api/airspace/zones?state=GA&activeOnly=true

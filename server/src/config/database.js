@@ -5,7 +5,7 @@ const { NATION, OPERATING_AREAS } = require('./geoConfig');
 require('dotenv').config();
 
 // ============================================================
-// Multi-Agency Organisations (Phase 6)
+// Multi-Agency Organisations
 //
 // All 22 existing bases are genuinely police stations, so they're all
 // seeded under POLICE — the other four organisations exist as real
@@ -26,7 +26,7 @@ const policeOrgId = seedOrganisations.find(o => o.code === 'POLICE').id;
 const aviationControlOrgId = seedOrganisations.find(o => o.code === 'AVIATION_CONTROL').id;
 
 // ============================================================
-// Nationwide hierarchy seed (Phase 1)
+// Nationwide hierarchy seed
 //
 // Nation -> State -> District -> Base is built here from the raw
 // geography in geoConfig.js. Existing Goa drones (seeded below)
@@ -61,13 +61,12 @@ for (const area of OPERATING_AREAS) {
   };
   seedStates.push(stateRecord);
 
-  // Phase 5: seed airspace zones for this state from geoConfig's raw
-  // noFlyZones (existing, unchanged) + surveillanceZones (new demo
-  // patrol-eligible zones). This becomes the live, CRUD-able source of
-  // truth (see routes/airspace.js) — dispatch-time enforcement and the
-  // map both read from db.airspaceZones from here on, not geoConfig
-  // directly, so zones created/edited after startup are actually
-  // enforced rather than being decorative.
+  // Seed airspace zones for this state from geoConfig's raw noFlyZones
+  // + surveillanceZones (patrol-eligible zones). This becomes the live,
+  // CRUD-able source of truth (see routes/airspace.js) — dispatch-time
+  // enforcement and the map both read from db.airspaceZones from here
+  // on, not geoConfig directly, so zones created/edited after startup
+  // are actually enforced rather than being decorative.
   for (const zone of area.noFlyZones || []) {
     seedAirspaceZones.push({
       id: crypto.randomUUID(),
@@ -170,12 +169,12 @@ function findBaseIdByCode(baseCode) {
 }
 
 // ============================================================
-// Demo Personnel Accounts (Phase 6)
+// Demo Personnel Accounts
 //
 // One shared demo password across all seed accounts, purely for ease
 // of trying different roles/scopes — a real deployment would never do
-// this. Distinct from citizen_profiles (Phase 3) — these are
-// organisation personnel, not the public.
+// this. Distinct from citizen_profiles — these are organisation
+// personnel, not the public.
 // ============================================================
 const DEMO_PASSWORD_HASH = bcrypt.hashSync('rapid123', 10);
 const goaStateId = seedStates.find(s => s.code === 'GA')?.id || null;
@@ -332,9 +331,9 @@ const supabaseKey = process.env.SUPABASE_KEY;
 const isSupabaseEnabled = !!(supabaseUrl && supabaseKey);
 
 if (isSupabaseEnabled) {
-  console.log('🔌 Database: Supabase backend connected.');
+  console.log('Database: Supabase backend connected.');
 } else {
-  console.log('💾 Database: Using in-memory database simulation (No Supabase credentials provided).');
+  console.log('Database: Using in-memory database simulation (No Supabase credentials provided).');
 }
 
 const supabase = isSupabaseEnabled ? createClient(supabaseUrl, supabaseKey) : null;
@@ -344,7 +343,7 @@ const db = {
   isSupabase: isSupabaseEnabled,
 
   // -------------------------------------------------------
-  // Nationwide hierarchy (Phase 1) — Nation -> State -> District -> Base.
+  // Nationwide hierarchy — Nation -> State -> District -> Base.
   // Read-mostly reference data; seeded once from geoConfig.js at
   // startup. Supabase branches fall back to the in-memory seed if
   // the tables don't exist yet, same pattern as missionRecordings.
@@ -426,8 +425,8 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Organisations (Phase 6) — Police/Army/Navy/Air Force/Aviation
-  // Control. Reference data seeded at startup; no write routes yet
+  // Organisations — Police/Army/Navy/Air Force/Aviation Control.
+  // Reference data seeded at startup; no write routes yet
   // (creating a new organisation isn't a demo-relevant operation).
   // -------------------------------------------------------
   organisations: {
@@ -457,8 +456,8 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Users (Phase 6) — organisation personnel accounts. Distinct from
-  // citizen_profiles (Phase 3's public-facing mobile app accounts).
+  // Users — organisation personnel accounts. Distinct from
+  // citizen_profiles (the public-facing mobile app accounts).
   // -------------------------------------------------------
   users: {
     async list() {
@@ -488,7 +487,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Airspace Zones (Phase 5) — the live, CRUD-able source of truth for
+  // Airspace Zones — the live, CRUD-able source of truth for
   // no-fly/restricted/protected zones. Seeded once from geoConfig.js at
   // startup; routes/airspace.js can create/update/deactivate zones
   // afterward, and dispatch-time enforcement (rl/environment.js,
@@ -564,7 +563,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Surveillance Missions (Phase 5) — patrol/waypoint mission records.
+  // Surveillance Missions — patrol/waypoint mission records.
   // See services/surveillance/.
   // -------------------------------------------------------
   surveillanceMissions: {
@@ -831,12 +830,11 @@ const db = {
         longitude: parseFloat(snapData.longitude),
         timestamp: new Date().toISOString(),
         image_url: snapData.image_url,
-        // Extended Command 2 metadata
         heading: snapData.heading != null ? parseFloat(snapData.heading) : null,
         altitude: snapData.altitude != null ? parseFloat(snapData.altitude) : null,
         reason: snapData.reason || 'manual',
         target: snapData.target || null,
-        // Phase 4 evidence integrity — sealed by services/camera/cameraManager.js
+        // Evidence integrity fields — sealed by services/camera/cameraManager.js
         night_vision_active: snapData.night_vision_active ?? null,
         previous_hash: snapData.previous_hash ?? null,
         entry_hash: snapData.entry_hash ?? null,
@@ -880,7 +878,7 @@ const db = {
         duration_seconds: data.duration_seconds || null,
         stream_url: data.stream_url || null,
         created_at: new Date().toISOString(),
-        // Phase 4 evidence integrity — set at finalization, not creation
+        // Evidence integrity fields — set at finalization, not creation
         // (a "recording" row is still mutable, so it can't be sealed yet).
         previous_hash: null,
         entry_hash: null,
@@ -961,7 +959,7 @@ const db = {
   // -------------------------------------------------------
   // Controller Actions — operator action audit log.
   // Every command issued by the human controller is logged.
-  // This becomes the foundation for AI/RL feedback (Command 3+).
+  // This becomes the foundation for AI/RL feedback.
   // -------------------------------------------------------
   controllerActions: {
     async create(data) {
@@ -1019,9 +1017,9 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // RL Experience Buffer (Phase 2) — (state, action, reward, next_state)
-  // tuples from every completed mission. Phase 7's neuralPolicy trains on
-  // this (see rl/trainer.js) via rl/featureEncoder.js, which reconstructs
+  // RL Experience Buffer — (state, action, reward, next_state) tuples
+  // from every completed mission. neuralPolicy trains on this (see
+  // rl/trainer.js) via rl/featureEncoder.js, which reconstructs
   // per-candidate features from the stored `state` snapshot.
   // -------------------------------------------------------
   experienceBuffer: {
@@ -1064,7 +1062,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Security Audit Log (Phase 8) — SHA-256 hash-chained security events
+  // Security Audit Log — SHA-256 hash-chained security events
   // (login attempts, airspace zone writes, RL mode switches, unauthorized
   // role-gated attempts). See services/security/securityAuditLogger.js,
   // which reuses camera/evidenceHasher.js's chaining logic unchanged
@@ -1111,10 +1109,11 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Citizen Profiles (Phase 3) — RAPID Citizen mobile app accounts.
+  // Citizen Profiles — RAPID Citizen mobile app accounts.
   // Auth here is a deliberate placeholder (phone-only lookup, no
-  // password verification) — real auth is Phase 6 (R02). Do not
-  // treat this as a security boundary.
+  // password verification) — organisation users get real auth (see
+  // services/auth/authService.js); this is not that. Do not treat this
+  // as a security boundary.
   // -------------------------------------------------------
   citizenProfiles: {
     async create(data) {
@@ -1177,8 +1176,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Voice Reports (Phase 3) — audit trail for citizen voice/text
-  // emergency reports, per architecture Section 7.2's "audit" block.
+  // Voice Reports — audit trail for citizen voice/text emergency reports.
   // -------------------------------------------------------
   voiceReports: {
     async create(data) {
@@ -1219,8 +1217,8 @@ const db = {
   }
 };
 // ============================================================
-// Supabase seeding � runs at startup when Supabase is configured.
-// Step 1: Orgs + demo users (must run first � bases FK to org IDs).
+// Supabase seeding � runs at startup when Supabase is configured.
+// Step 1: Orgs + demo users (must run first � bases FK to org IDs).
 // Step 2: Full geographic hierarchy + drone fleet (first boot only,
 //         guarded by checking if nations AND drones tables are empty).
 // ============================================================
@@ -1244,7 +1242,7 @@ async function seedOrganisationsAndUsersInSupabase() {
 
     console.log('?? Auth: Organisations + demo personnel accounts synced to Supabase.');
   } catch (err) {
-    console.error('??  Failed to sync organisations/users into Supabase � auth may fail:', err.message);
+    console.error('??  Failed to sync organisations/users into Supabase � auth may fail:', err.message);
   }
 }
 
@@ -1257,7 +1255,7 @@ async function seedGeographyAndFleetToSupabase() {
     const dronesSeeded = existingDrones  && existingDrones.length  > 0;
 
     if (geoSeeded && dronesSeeded) {
-      console.log('?? Seed: All Supabase data present � skipping seed.');
+      console.log('?? Seed: All Supabase data present � skipping seed.');
       return;
     }
 
@@ -1266,7 +1264,7 @@ async function seedGeographyAndFleetToSupabase() {
     let baseIdByCode = Object.fromEntries((liveBasesCheck || []).map(b => [b.base_code, b.id]));
 
     if (!geoSeeded) {
-      console.log('?? Seed: First boot � seeding geographic hierarchy to Supabase...');
+      console.log('?? Seed: First boot � seeding geographic hierarchy to Supabase...');
 
       // 1. Nations
       const { error: natErr } = await supabase.from('nations')
@@ -1284,7 +1282,7 @@ async function seedGeographyAndFleetToSupabase() {
       const { data: liveStates } = await supabase.from('states').select('id, code');
       const stateIdByCode = Object.fromEntries(liveStates.map(s => [s.code, s.id]));
 
-      // 3. Districts (no unique DB constraint � use insert, ignore duplicates)
+      // 3. Districts (no unique DB constraint � use insert, ignore duplicates)
       const districtPayload = seedDistricts.map(({ id, state_id, ...r }) => ({
         ...r, state_id: stateIdByCode[seedStates.find(s => s.id === state_id)?.code]
       }));
@@ -1298,7 +1296,7 @@ async function seedGeographyAndFleetToSupabase() {
         if (live) localToLiveDistrictId[d.id] = live.id;
       }
 
-      // 4. Organisations (already seeded � fetch stable IDs)
+      // 4. Organisations (already seeded � fetch stable IDs)
       const { data: liveOrgs } = await supabase.from('organisations').select('id, code');
       const orgIdByCode = Object.fromEntries(liveOrgs.map(o => [o.code, o.id]));
 

@@ -5,12 +5,12 @@ const { OPERATING_AREAS } = require('../config/geoConfig');
 const { resolveAllowedBaseIds } = require('../services/auth/scopeResolver');
 
 /**
- * RAPID Geo Routes — Phase 1
+ * RAPID Geo Routes
  *
  * Serves the nationwide hierarchy (Nation -> State -> District -> Base)
  * plus the per-state map overlays (no-fly zones, reference police
  * station markers). The client fetches this instead of keeping its
- * own duplicate copy of geographic constants (see audit finding C3).
+ * own duplicate copy of geographic constants.
  */
 
 // GET /api/geo/nations
@@ -79,9 +79,9 @@ router.get('/map-config', async (req, res) => {
     const area = OPERATING_AREAS.find(a => a.stateCode === stateCode);
     if (!area) return res.status(404).json({ error: `Unknown state code "${stateCode}"` });
 
-    // Phase 5: zones come from db.airspaceZones (the live, CRUD-able
-    // source of truth) rather than geoConfig directly, so the map
-    // reflects zones created/edited after startup via routes/airspace.js.
+    // Zones come from db.airspaceZones (the live, CRUD-able source of
+    // truth) rather than geoConfig directly, so the map reflects zones
+    // created/edited after startup via routes/airspace.js.
     const stateRecord = await db.states.get(stateCode);
     const zones = stateRecord ? await db.airspaceZones.list({ stateId: stateRecord.id, activeOnly: true }) : [];
 

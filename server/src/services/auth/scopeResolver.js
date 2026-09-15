@@ -8,6 +8,7 @@
  * District -> Base scope hierarchy from Section 2.2.
  */
 const db = require('../../config/database');
+const { OPERATING_AREAS } = require('../../config/geoConfig');
 
 /**
  * Shared core: selects the caller's visible base RECORDS from an already
@@ -57,4 +58,36 @@ async function resolveAllowedStateIds(user) {
   return [...stateIds];
 }
 
-module.exports = { resolveAllowedBaseIds, resolveAllowedStateIds };
+/**
+ * Incidents don't carry a state_id or base_id — they're scoped by whether
+ * their coordinates fall inside one of the caller's allowed states'
+ * geographic bounds. Moved here from routes/incidents.js (fix for step 18)
+ * so routes/metrics.js can apply the identical scoping rather than
+ * duplicating it — metrics.js previously applied no scoping at all,
+ * returning every organisation's aggregate drone/incident counts to any
+ * authenticated caller.
+ *
+ * @returns {Promise<Array<{north,south,east,west}>>} bounds boxes the
+ *   caller's allowed states fall within
+ */
+async function resolveAllowedIncidentBounds(user) {
+  // One states.list() instead of one states.get() per allowed state -
+  // concurrent reads are still N round trips under Supabase, on endpoints
+  // the dashboard polls.
+  const [stateIds, allStates] = await Promise.all([
+    resolveAllowedStateIds(user),
+    db.states.list({})
+  ]);
+  const allowed = new Set(stateIds);
+  return allStates
+    .filter(s => allowed.has(s.id))
+    .map(s => OPERATING_AREAS.find(a => a.stateCode === s.code))
+    .filter(Boolean)
+    .map(a => a.bounds);
+}
+
+function isWithinAnyBounds(lat, lng, boundsList) {
+  return boundsList.some(b => lat >= b.south && lat <= b.north && lng >= b.west && lng <= b.east);
+}
+
+module.exports = { resolveAllowedBaseIds, resolveAllowedStateIds, resolveAllowedIncidentBounds, isWithinAnyBounds };

@@ -3,36 +3,13 @@ const router = express.Router();
 const db = require('../config/database');
 const { dispatchService } = require('../services/dispatchService');
 const websocketService = require('../services/websocketService');
-const { resolveAllowedStateIds } = require('../services/auth/scopeResolver');
-const { OPERATING_AREAS } = require('../config/geoConfig');
-
-// Incidents don't carry a state_id — they're scoped by whether their
-// coordinates fall inside one of the caller's allowed states' bounds.
-async function boundsForAllowedStates(user) {
-  // One states.list() instead of one states.get() per allowed state. The
-  // previous Promise.all made those reads concurrent but not fewer - still
-  // N round trips under Supabase, on an endpoint the dashboard polls.
-  const [stateIds, allStates] = await Promise.all([
-    resolveAllowedStateIds(user),
-    db.states.list({})
-  ]);
-  const allowed = new Set(stateIds);
-  return allStates
-    .filter(s => allowed.has(s.id))
-    .map(s => OPERATING_AREAS.find(a => a.stateCode === s.code))
-    .filter(Boolean)
-    .map(a => a.bounds);
-}
-
-function isWithinAnyBounds(lat, lng, boundsList) {
-  return boundsList.some(b => lat >= b.south && lat <= b.north && lng >= b.west && lng <= b.east);
-}
+const { resolveAllowedIncidentBounds, isWithinAnyBounds } = require('../services/auth/scopeResolver');
 
 // GET /api/incidents - List incidents within the caller's organisation + scope
 router.get('/', async (req, res) => {
   try {
     const list = await db.incidents.list();
-    const boundsList = await boundsForAllowedStates(req.user);
+    const boundsList = await resolveAllowedIncidentBounds(req.user);
     res.json(list.filter(i => isWithinAnyBounds(i.latitude, i.longitude, boundsList)));
   } catch (err) {
     res.status(500).json({ error: err.message });

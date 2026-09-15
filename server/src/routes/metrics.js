@@ -1,12 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { resolveAllowedBaseIds, resolveAllowedIncidentBounds, isWithinAnyBounds } = require('../services/auth/scopeResolver');
+
+// Security fix (Step 18): neither route below applied any scope filtering -
+// db.drones.list()/db.incidents.list() were used unfiltered, so any
+// authenticated user from any organisation received the entire system's
+// aggregate statistics. Measured: aviation.control (a different
+// organisation with zero drones) received the identical totalDrones/
+// activeIncidents/averageBattery as national.commander. Same class of bug
+// as /api/fleet/decisions (fixed earlier in this pass), same fix: filter
+// through the same scope helpers /api/drones and /api/incidents already
+// use, so a metrics summary always matches what the caller can actually see.
+async function scopedDronesAndIncidents(user) {
+  const [drones, incidents, allowedBaseIds, boundsList] = await Promise.all([
+    db.drones.list(),
+    db.incidents.list(),
+    resolveAllowedBaseIds(user),
+    resolveAllowedIncidentBounds(user)
+  ]);
+  const allowedBases = new Set(allowedBaseIds);
+  return {
+    drones: drones.filter(d => allowedBases.has(d.base_id)),
+    incidents: incidents.filter(i => isWithinAnyBounds(i.latitude, i.longitude, boundsList))
+  };
+}
 
 // GET /api/metrics/summary - General overview analytics
 router.get('/summary', async (req, res) => {
   try {
-    const drones = await db.drones.list();
-    const incidents = await db.incidents.list();
+    const { drones, incidents } = await scopedDronesAndIncidents(req.user);
 
     const activeDronesCount = drones.filter(d => ['Dispatched', 'En Route', 'On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Returning', 'Awaiting Controller'].includes(d.status)).length;
     const maintenanceDronesCount = drones.filter(d => d.status === 'maintenance').length;
@@ -37,8 +60,8 @@ router.get('/summary', async (req, res) => {
 // GET /api/metrics/historical - Historical trends for charts
 router.get('/historical', async (req, res) => {
   try {
-    const incidents = await db.incidents.list();
-    
+    const { drones, incidents } = await scopedDronesAndIncidents(req.user);
+
     // 1. Group incidents by category
     const categoryCounts = {};
     incidents.forEach(inc => {
@@ -62,7 +85,6 @@ router.get('/historical', async (req, res) => {
     ];
 
     // 3. Drone utilization statistics
-    const drones = await db.drones.list();
     const droneUsage = drones.map(d => ({
       name: d.call_sign,
       battery: Math.round(d.battery_level),

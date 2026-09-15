@@ -1022,3 +1022,84 @@ data using their full, distinguishing ids (a first check using truncated
 last character - caught and re-verified with the full id).
 
 Full smoke test: all 200. Client lint/build pass.
+
+---
+
+## Step 11 — Code splitting
+
+**What changed:** [`App.jsx`](client/src/App.jsx) converted 8 of its 9 page
+imports to `React.lazy()`. Verified the import graph first: `leaflet`/
+`react-leaflet` (Dashboard + Help), `recharts` (Analytics + RLConsole), and
+`framer-motion` (Dashboard's modals + Help) are reachable *only* from
+specific pages, never from `App.jsx` or any shared/eager code — confirming
+route-level splitting would cleanly separate them. `Login` stays a static
+import deliberately: it's the first thing every unauthenticated visitor
+needs, has none of the three heavy dependencies, and lazy-loading it would
+only add a round trip for no benefit.
+
+### Result — runtime-verified, not just inferred from build output
+
+Build now emits 20 chunks instead of 1. Confirmed with a headless browser
+monitoring actual network requests (not just reading the build's static
+output):
+
+```
+Loading /login:
+  JS chunks fetched: 1
+    index-M3AeNMnr.js (206,154 B)
+  Heavy/page chunks incorrectly loaded on /login: 0
+
+Navigating to /dashboard after login:
+  Dashboard-CQzPUM4g.js (54,727 B)   <- fetched on demand
+  proxy-DojtsuX0.js (269,638 B)      <- Leaflet + framer-motion, on demand
+```
+
+`/login` downloads **206 KB of JS total** — zero Leaflet, zero recharts,
+zero framer-motion. Those only load when a route that actually needs them
+is visited.
+
+### Lighthouse (same methodology as Step 1's baseline, mobile preset)
+
+| Metric | Before (Step 1) | After |
+|---|---:|---:|
+| Performance score | 61 | **92** |
+| First Contentful Paint | 6.5s | **2.6s** |
+| Largest Contentful Paint | 6.6s | **2.7s** |
+| Speed Index | 6.5s | **2.6s** |
+| Time to Interactive | 7.1s | **3.1s** |
+| "Reduce unused JavaScript" | ~3,760ms / 759 KiB | ~450ms / 91 KiB |
+
+### Implementation notes
+
+- No `manualChunks` tuning was needed — Vite/Rollup's default per-`import()`
+  chunking already separated the three heavy libraries cleanly, exactly as
+  predicted from the import-graph check.
+- Suspense fallback is deliberately minimal: reuses the exact visual
+  pattern already established by `RequireAuth`'s "AUTHENTICATING…" loading
+  state, rather than introducing new loading-state design — the dedicated
+  per-page skeletons are Step 13's job, not this one's.
+- Total `dist/` size grew slightly (1.06 MB vs 1.02 MB) — expected and
+  correct: each chunk carries its own small module-wrapper overhead. This
+  is not a regression; what matters is bytes downloaded *per visit*, which
+  dropped sharply for every route except Dashboard/Help/Analytics/
+  RLConsole themselves.
+
+### Full regression across all 9 routes
+
+Headless-browser check of all 9 routes (Login, Dashboard, Fleet,
+Incidents, Analytics, Surveillance, RLConsole, SecurityAudit, Help) for
+console/page errors after the split: 8/9 clean.
+
+The one flagged item — a CSP violation loading a demo drone's hardcoded
+video-feed URL on Dashboard — was traced to `stream_url:
+'https://multiplatform-f.akamaihd.net/...'` in `config/database.js`,
+confirmed present in the very first commit (`7a71da0`) before any work in
+this pass began. Pre-existing, unrelated to code splitting (Dashboard's
+own CSP-blocked media, not a lazy-loading defect), and non-fatal — the
+page still rendered its full content around the blocked video. Flagged,
+not fixed, staying in scope.
+
+Dashboard also screenshotted and visually compared against Step 3's
+screenshot: identical layout, map, fleet cards, mission control panel —
+no visual regression from the split. Full server endpoint smoke test
+(unaffected, client-only change): all 200.

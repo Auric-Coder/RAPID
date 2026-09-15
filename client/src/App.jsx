@@ -1,16 +1,30 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Shield, Radio, Layers, FileText, BarChart3, HelpCircle, Activity, Radar, LogOut, BrainCircuit, ShieldCheck } from 'lucide-react';
-import Dashboard from './pages/Dashboard';
-import Fleet from './pages/Fleet';
-import Incidents from './pages/Incidents';
-import Analytics from './pages/Analytics';
-import Surveillance from './pages/Surveillance';
-import RLConsole from './pages/RLConsole';
-import SecurityAudit from './pages/SecurityAudit';
-import Help from './pages/Help';
 import Login from './pages/Login';
 import useRapidStore from './store/rapidStore';
+
+// Step 11 (performance): every page below is loaded on demand, not
+// bundled into the initial chunk. Login (imported above) stays a static
+// import — it's the first thing every unauthenticated visitor needs, has
+// no heavy dependencies of its own (no Leaflet, recharts or
+// framer-motion), and lazy-loading it would only add a round trip for no
+// benefit. The other eight pages are the ones actually pulling in the
+// three heavy libraries Step 1 measured in the single 999 KiB bundle:
+// Dashboard (Leaflet, via RapidMap/shared/utils.js, plus framer-motion
+// via its modals), Analytics/RLConsole (recharts), and Help (Leaflet +
+// framer-motion). None of the three libraries are reachable from this
+// file or any other eager/shared code, so splitting these eight page
+// boundaries cleanly separates them out of every route that doesn't need
+// them - including /login itself.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Fleet = lazy(() => import('./pages/Fleet'));
+const Incidents = lazy(() => import('./pages/Incidents'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Surveillance = lazy(() => import('./pages/Surveillance'));
+const RLConsole = lazy(() => import('./pages/RLConsole'));
+const SecurityAudit = lazy(() => import('./pages/SecurityAudit'));
+const Help = lazy(() => import('./pages/Help'));
 
 const ROLE_LABELS = {
   NATIONAL_COMMANDER: 'National Commander',
@@ -139,12 +153,25 @@ function RequireAuth({ children }) {
   return children;
 }
 
+// Step 11: shown while a lazy page chunk is downloading. Deliberately
+// minimal — matches RequireAuth's existing "AUTHENTICATING…" loading
+// state above rather than introducing new loading-state design; the
+// dedicated per-page skeletons are Step 13's job, not this one's.
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
+      <span className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">LOADING…</span>
+    </div>
+  );
+}
+
 function App() {
   const checkAuth = useRapidStore(s => s.checkAuth);
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
   return (
     <Router>
+      <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         {/* Standalone Citizen Portal (Mobile friendly, no sidebar) */}
         <Route path="/help" element={<Help />} />
@@ -228,6 +255,7 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
     </Router>
   );
 }

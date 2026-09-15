@@ -2,6 +2,24 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const { resolveAllowedBaseIds, resolveAllowedIncidentBounds, isWithinAnyBounds } = require('../services/auth/scopeResolver');
+const { cacheGet } = require('../middleware/apiCache');
+
+// Step 18 (performance): cache key MUST include the caller's full scope
+// tuple, not just the route path - these responses are per-organisation
+// (and per-state/district/base within it) since the security fix above.
+// A cache keyed by URL alone would serve one caller's cached aggregate to
+// a different caller with a different scope, exactly the bug just fixed.
+function cacheKeyForUser(prefix, user) {
+  return `metrics:${prefix}:${user.organisationId}:${user.scopeType}:${user.scopeId || ''}`;
+}
+
+// 3s TTL matches Analytics.jsx's own poll interval (Step 13) - this
+// doesn't make the dashboard feel less live, it just stops every
+// simultaneous poll tick from recomputing the same aggregation from
+// scratch. Drone/incident data can change meaningfully within 3s (the
+// simulator ticks every 1s), so this is a deliberately short window, not
+// a "safe because nothing changes" cache like Steps 5/6's reference data.
+const METRICS_TTL_MS = 3000;
 
 // Security fix (Step 18): neither route below applied any scope filtering -
 // db.drones.list()/db.incidents.list() were used unfiltered, so any
@@ -27,7 +45,7 @@ async function scopedDronesAndIncidents(user) {
 }
 
 // GET /api/metrics/summary - General overview analytics
-router.get('/summary', async (req, res) => {
+router.get('/summary', cacheGet(METRICS_TTL_MS, req => cacheKeyForUser('summary', req.user)), async (req, res) => {
   try {
     const { drones, incidents } = await scopedDronesAndIncidents(req.user);
 
@@ -58,7 +76,7 @@ router.get('/summary', async (req, res) => {
 });
 
 // GET /api/metrics/historical - Historical trends for charts
-router.get('/historical', async (req, res) => {
+router.get('/historical', cacheGet(METRICS_TTL_MS, req => cacheKeyForUser('historical', req.user)), async (req, res) => {
   try {
     const { drones, incidents } = await scopedDronesAndIncidents(req.user);
 

@@ -1465,3 +1465,72 @@ documented defaults.
 
 No configuration or code change made. Minification was already correctly
 configured and verified working before this pass began.
+
+---
+
+## Step 18 — Server-side caching
+
+**Investigated what remained uncovered by Steps 5/6 before implementing
+anything**, and found a security bug rather than a caching gap first —
+recorded as its own commit (`0fbb352`, "fix(security): scope
+/api/metrics/summary and /historical to the caller's organisation"),
+same class of issue as the `/api/fleet/decisions` bug from Step 5:
+neither metrics route applied any scope filtering at all.
+
+**Deliberately ruled out:** the `drones`/`incidents` lists themselves.
+They're live telemetry updated every second by the simulator — caching
+them server-side would serve stale drone positions, breaking the app's
+actual purpose. This is the "never cache what needs to be fresh" case.
+
+**What's left, once metrics were correctly scoped:** the *aggregate
+computation* (filtering + counting + averaging the full drone/incident
+lists) re-runs from scratch on every request, for every organisation,
+polled every 3 seconds by Analytics.jsx (Step 13). A genuine caching
+target — but a materially different one from Steps 5/6, since the
+response is now correctly per-organisation, not global.
+
+### Implementation
+
+Reused the `apiCache` middleware from Step 5 - its `cacheGet(ttlMs,
+keyFn)` already accepts a `keyFn(req)` reading anything from the request,
+so no code change to the middleware itself was needed, only a clarifying
+update to its safety-rule comment: caching a scoped route IS safe,
+provided the key includes the caller's full scope tuple
+(`organisationId:scopeType:scopeId`), not just the URL.
+
+```js
+function cacheKeyForUser(prefix, user) {
+  return `metrics:${prefix}:${user.organisationId}:${user.scopeType}:${user.scopeId || ''}`;
+}
+```
+
+TTL: 3 seconds, matching Analytics.jsx's own poll interval exactly - this
+doesn't make the dashboard feel less live, it stops every simultaneous
+poll tick from recomputing the identical aggregation from scratch. This
+is a deliberately short window (unlike Steps 5/6's minutes-long TTLs for
+genuinely static reference data), because drone/incident data changes
+meaningfully within seconds via the 1Hz simulator.
+
+### Verified — the property that actually matters here
+
+Interleaved requests across 3 different roles, checking for cache
+leakage specifically (not just "does caching work"):
+
+```
+national  1st: MISS  totalDrones=22
+aviation  1st: MISS  totalDrones=0
+goa       1st: MISS  totalDrones=5
+national  2nd: HIT   totalDrones=22
+aviation  2nd: HIT   totalDrones=0
+goa       2nd: HIT   totalDrones=5
+```
+
+Every role got its own correct, non-leaked value on both the first
+(cold) and second (cached) request - proving the per-organisation key
+actually prevents what a naive global cache would have re-introduced.
+TTL expiry re-verified: after 3.5s, the next request for a previously-
+cached role correctly shows `MISS` (fresh recomputation, not a stale
+serve past the TTL). `/historical` re-verified the same way
+(`goa`/`punjab` each seeing their own correct `droneUsage` list length).
+
+Full 7-endpoint smoke test: all 200. Client lint unaffected.

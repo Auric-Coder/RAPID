@@ -11,12 +11,15 @@
  * not to this middleware.
  *
  * SAFETY RULE — read before adding a new route to this cache:
- * Only wrap a route whose response is identical for every caller. If the
- * handler reads req.user, or filters its result by organisation/scope in
- * any way, do NOT cache it here — caching by URL alone would serve one
- * user's response to a different user with a different scope. See
- * routes/geo.js's `/bases` route for a documented example of a route that
- * was deliberately excluded for exactly this reason.
+ * `keyFn` receives the full `req`, so a route whose response depends on
+ * req.user (organisation/scope) CAN be cached safely — but only if the key
+ * includes the caller's full scope tuple (organisationId + scopeType +
+ * scopeId), not just the URL. Caching by URL alone, for a scoped route,
+ * would serve one user's response to a different user with a different
+ * scope — see routes/metrics.js's cacheKeyForUser() for a correct example,
+ * and routes/geo.js's `/bases` route for a route that was excluded
+ * entirely rather than keyed, because narrowing its low-traffic filtered
+ * shape wasn't worth a multi-key cache.
  */
 
 const store = new Map(); // key -> { expires: epoch ms, body: parsed JSON }

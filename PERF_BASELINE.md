@@ -1287,3 +1287,68 @@ changes since then.
 No dependency, code, or asset change made. The image pipeline was
 already properly optimized before this pass began; this step confirms
 that with evidence rather than repeating Phase 0's assumption unchecked.
+
+---
+
+## Step 15 — Compress API payloads
+
+**Confirmed the gap:** zero compression existed anywhere in
+`server/index.js` — no `compression` middleware, no manual gzip. This
+affected both JSON API responses **and** the static `client/dist` bundle
+served by the same Express process (Step 11's code-split JS chunks were
+being served fully uncompressed).
+
+### Fix
+
+Added `compression` (npm) — the standard, expressjs-maintained gzip/
+brotli middleware. No viable alternative avoiding a new dependency:
+Express has zero built-in compression, and hand-rolling it via `zlib`
+means reimplementing threshold-based skipping and content-type handling
+`compression` already does correctly. Mounted early (right after
+`helmet`, before routes and `express.static`), default 1024-byte
+threshold kept as-is — several responses here are only a few bytes and
+compressing those would add overhead for no benefit.
+
+### Verified — real wire bytes, not header claims
+
+Measured actual transferred bytes with `Accept-Encoding: identity` vs
+`gzip`, not just checking for the header's presence:
+
+| Endpoint | Uncompressed | Gzip (wire) | Reduction |
+|---|---:|---:|---:|
+| `/api/geo/bases?limit=500` | 9,224 B | 1,501 B | **-83.7%** |
+| `/api/drones` | 11,730 B | 2,637 B | **-77.5%** |
+| `/api/incidents` | 16,476 B | 3,380 B | **-79.5%** |
+| `/api/fleet/decisions` | 30,487 B | 3,963 B | **-87.0%** |
+| `/api/geo/map-config?state=GA` | 1,504 B | 608 B | -59.6% |
+
+Static bundle (previously uncompressed on the wire despite Vite's build
+log always reporting a "gzip: X kB" figure — that number was
+aspirational until this fix; a real browser was receiving the full
+uncompressed size):
+
+| Asset | Uncompressed | Gzip (wire) | Reduction |
+|---|---:|---:|---:|
+| Main entry JS chunk | 206,197 B | 67,065 B | **-67.5%** |
+| Main CSS file | 34,959 B | 7,429 B | **-78.7%** |
+
+### Lighthouse — closes the exact gap Step 11 left open
+
+Step 11's own re-measurement explicitly listed "Enable text compression"
+as a remaining opportunity (~750ms / 163 KiB). Re-ran the identical test:
+
+| Metric | Step 11 | Step 15 |
+|---|---:|---:|
+| Performance score | 92 | **98** |
+| First Contentful Paint | 2.6s | **1.8s** |
+| Largest Contentful Paint | 2.7s | **2.0s** |
+| Time to Interactive | 3.1s | **2.0s** |
+| "Enable text compression" | ~750ms / 163 KiB | **gone** |
+
+Only two minor opportunities remain: render-blocking resources (~750ms,
+pre-existing, unrelated to this step) and unused JS (~150ms/30 KiB, down
+from 759 KiB before Step 11).
+
+Full 8-endpoint smoke test: all 200. WebSocket connectivity re-verified
+unaffected (`compression` only touches HTTP responses, not the `ws`
+upgrade). Client lint/build pass (client-side unaffected).

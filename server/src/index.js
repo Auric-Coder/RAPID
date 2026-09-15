@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
@@ -48,6 +49,17 @@ app.use(helmet({
     }
   }
 }));
+
+// Step 15 (performance): no compression existed anywhere in this server -
+// covers both JSON API responses and the static client/dist bundle served
+// below (including Step 11's code-split JS chunks). Every browser sends
+// `Accept-Encoding: gzip, br` and decompresses transparently, so this is
+// zero-risk on the client side; nothing here needs a client change.
+// Default threshold (1024 bytes) is kept as-is: several of this API's
+// responses are just a few bytes (e.g. an empty array), and compressing
+// those would add gzip overhead for no benefit - the default correctly
+// skips them.
+app.use(compression());
 
 // Enable CORS for the frontend. Phase 8 tightens this to an explicit allowlist;
 // override with CORS_ORIGINS (comma-separated) for a non-default deploy.

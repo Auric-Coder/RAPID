@@ -1,5 +1,10 @@
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet';
+// Step 16 (performance): moved from a static <link> in index.html (loaded
+// on every page, including /login) to this JS import, so Vite bundles it
+// into this component's own lazy chunk - only fetched when Dashboard is
+// actually visited, and from the local npm package instead of unpkg's CDN.
+import 'leaflet/dist/leaflet.css';
 import { useShallow } from 'zustand/react/shallow';
 import useRapidStore from '../../store/rapidStore';
 import { policeStationIcon, rapidBaseIcon, incidentIcon, droneIcon, FLYING_STATUSES } from '../shared/utils';

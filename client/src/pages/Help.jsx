@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
+// Step 16 (performance): see the matching comment in RapidMap.jsx - moved
+// from index.html's static <link> to this JS import.
+import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, MapPin, Send, AlertTriangle, Phone, User, CheckCircle, Shield, Play, Activity } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';

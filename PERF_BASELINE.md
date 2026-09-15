@@ -1352,3 +1352,80 @@ from 759 KiB before Step 11).
 Full 8-endpoint smoke test: all 200. WebSocket connectivity re-verified
 unaffected (`compression` only touches HTTP responses, not the `ws`
 upgrade). Client lint/build pass (client-side unaffected).
+
+---
+
+## Step 16 — Defer non-critical scripts/styles
+
+**Confirmed exactly 3 render-blocking resources** from Step 15's own
+Lighthouse report — Google Fonts CSS (881ms), Leaflet CSS from unpkg
+(871ms), and the app's own compiled Tailwind CSS (305ms). Two were fixed;
+one deliberately wasn't.
+
+### Fixed: Google Fonts
+
+Standard `preload` + media-swap pattern in `index.html`. The font URL
+already declares `display=swap`, so text stays visible with a fallback
+font throughout - this changes only when the CSS is allowed to block
+rendering, not what's shown.
+
+### Fixed: Leaflet CSS — the more interesting gap
+
+This was a static `<link>` in `index.html`, loaded on **every page
+including `/login`**, completely untouched by Step 11's code splitting -
+Step 11 only split the *JS* import graph, not this separate CSS tag, so
+Leaflet's 15KB stylesheet was shipping to every visitor regardless of
+whether they'd ever see a map.
+
+Moved to a JS-level `import 'leaflet/dist/leaflet.css'` inside
+`RapidMap.jsx` and `Help.jsx` (the only two consumers, confirmed in
+Step 11's import-graph check) - Vite now bundles it into their shared
+lazy chunk, matching exactly how the JS is already handled. This also
+removes an external unpkg CDN dependency (and its SRI hash) entirely -
+the file now ships from the already-vetted local `leaflet` npm package,
+a small supply-chain improvement alongside the performance one.
+
+### Deliberately NOT fixed: the app's own Tailwind CSS
+
+This delivers the base styles every page needs before first paint -
+background colors, layout, typography. Deferring it would cause a real,
+visible flash of unstyled content, trading a Lighthouse timing number for
+an actual UX regression. Some render-blocking CSS here is the *correct*
+trade-off, not an oversight.
+
+### Verified
+
+Built output confirms the split: a new `proxy-*.css` chunk (15,037 bytes,
+69 distinct `.leaflet-*` rules) appears only in the shared Dashboard/Help
+chunk; the main `index-*.css` keeps only the app's own few bytes of
+custom dark-theme overrides that *target* Leaflet's classes (not the
+library's own base rules).
+
+Runtime-verified with a headless browser (not just build output):
+
+```
+/login CSS requests:      index-*.css only - no leaflet/unpkg CSS at all
+/dashboard CSS requests:  index-*.css + proxy-*.css (fetched on demand)
+.leaflet-container computed style: position: relative, overflow: hidden
+  (Leaflet's own base rules, confirmed actually applied, not just fetched)
+```
+
+Dashboard screenshotted and compared pixel-for-pixel against Step 3's and
+Step 11's earlier screenshots: identical map rendering, markers, overlays
+- no visual regression.
+
+### Lighthouse
+
+| Metric | Step 15 | Step 16 |
+|---|---:|---:|
+| Performance score | 98 | **100** |
+| First Contentful Paint | 1.8s | **1.2s** |
+| Largest Contentful Paint | 2.0s | **1.4s** |
+| Time to Interactive | 2.0s | **1.7s** |
+| render-blocking-resources savings | ~750ms | **~150ms** |
+
+The one remaining render-blocking item is exactly the one left alone on
+purpose: the app's own CSS, 154ms - confirming the analysis was correct
+rather than incomplete.
+
+Full endpoint smoke test: all 200.

@@ -442,7 +442,11 @@ export default function MissionControlPanel() {
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                   {snapshots.map((snap) => (
                     <div key={snap.id} className="relative rounded-xl overflow-hidden border border-gray-800 group cursor-zoom-in">
-                      <img src={snap.image_url} className="w-full aspect-video object-cover opacity-70 group-hover:opacity-100 transition-all" alt={snap.label} />
+                      {/* Step 12 (performance): loading="lazy" - this list can now
+                          hold up to 200 snapshots (Step 9's cap) in a scrollable
+                          2-column grid; without it, all 200 remote images would
+                          start downloading the moment this panel renders. */}
+                      <img src={snap.image_url} loading="lazy" className="w-full aspect-video object-cover opacity-70 group-hover:opacity-100 transition-all" alt={snap.label} />
                       <div className="absolute bottom-0 left-0 w-full bg-black/80 px-1.5 py-1">
                         <div className="text-[8px] text-white font-mono font-bold uppercase truncate">{snap.label}</div>
                         {snap.heading != null && (

@@ -1103,3 +1103,62 @@ Dashboard also screenshotted and visually compared against Step 3's
 screenshot: identical layout, map, fleet cards, mission control panel —
 no visual regression from the split. Full server endpoint smoke test
 (unaffected, client-only change): all 200.
+
+---
+
+## Step 12 — Lazy loading (images)
+
+**What changed:** added the native `loading="lazy"` attribute to both
+`<img>` tags in the codebase —
+[`MissionControlPanel.jsx:445`](client/src/components/mission-control/MissionControlPanel.jsx#L445)
+and [`Incidents.jsx:375`](client/src/pages/Incidents.jsx#L375) — both of
+which render one image per snapshot inside a `.map()` over a list that,
+after Step 9's fix, can hold up to 200 items in a scrollable grid.
+
+### Verification — and two confounders that made a clean demo harder than expected
+
+The first, most direct verification: confirmed the built and *served*
+JS bundle actually contains the attribute (`grep`'d the live chunk, not
+just the source file) — `loading:"lazy"` present on both.
+
+Attempting a clean "0% loads immediately, then more loads on scroll"
+demonstration ran into two real environmental factors, investigated and
+confirmed rather than assumed:
+
+1. **Only 7 distinct image URLs exist across all 200 snapshot records**
+   for the test incident (`SELECT DISTINCT image_url` -> 7) — the demo
+   data draws from a small, reused `DETECTION_IMAGES` pool
+   (`simulatorService.js`). Counting distinct *network requests* is the
+   wrong metric here: once those 7 URLs are cached, every other `<img>`
+   referencing one of them can resolve near-instantly regardless of
+   `loading="lazy"`, since browser cache hits aren't blocked by the
+   attribute in the same way a fresh network fetch is.
+2. **Chrome's `loading="lazy"` preload distance scales with perceived
+   network speed**, and localhost is close to infinite bandwidth — Chrome
+   deliberately preloads much more aggressively on a fast connection
+   (by design, to avoid visible pop-in), so "only images in the exact
+   visible viewport load" is not the real, spec-compliant behavior to
+   expect even with the attribute correctly applied.
+
+Given both confounders, per-element load state (not network request
+count) is the correct signal, and it shows real, working behavior:
+before any scroll, 112 of 200 `<img>` elements had decoded pixel data;
+after programmatically scrolling the modal's own scroll container
+(confirmed via computed style, `scrollHeight: 24,503px` vs `clientHeight:
+468px` — genuinely far larger than one screen) to the bottom, that grew
+to 138 of 200. The 26-image increase is directly attributable to the
+scroll action — proof the browser is deferring and then resolving image
+loads in response to viewport position, which is exactly what
+`loading="lazy"` is for.
+
+### What this step does not claim
+
+It would be dishonest to report a clean "X% reduction in initial page
+weight" here, given the confounders above make that number highly
+dependent on this specific demo dataset's URL-reuse pattern and this
+test environment's network speed heuristics, neither of which represent
+a real deployment. The correctness claim is narrower and solid: the
+attribute is correctly applied to every relevant image, it doesn't break
+rendering, and it demonstrably responds to scroll position.
+
+Full regression: lint and build pass; full endpoint smoke test all 200.

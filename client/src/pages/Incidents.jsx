@@ -372,9 +372,13 @@ function Incidents() {
                           className="bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden flex flex-col"
                         >
                           <div className="aspect-video w-full overflow-hidden bg-black relative">
-                            <img 
-                              src={snap.image_url} 
-                              className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-all" 
+                            {/* Step 12 (performance): loading="lazy" - this grid can
+                                now hold up to 200 snapshots (Step 9's cap) inside a
+                                scrollable dossier modal. */}
+                            <img
+                              src={snap.image_url}
+                              loading="lazy"
+                              className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-all"
                               alt={snap.label} 
                             />
                             <div className="absolute top-2 left-2 bg-black/60 border border-cyan-400/30 px-2 py-0.5 rounded text-[8px] font-mono text-cyan-400 font-bold uppercase">

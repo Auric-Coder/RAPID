@@ -465,3 +465,55 @@ project default) exits 0. All 6 modified pages checked with a headless
 browser for console/page errors after the refactor — zero. The
 `Incidents.jsx` modal was screenshotted after the `setActiveTab` relocation
 and confirmed to still open on the "Summary" tab, matching prior behaviour.
+
+---
+
+## Step 4 — Remove unused dependencies
+
+**Verification, not removal.** Phase 0's static grep already found every
+dependency imported at least once. This step re-verified with a proper
+dependency-analysis tool rather than trusting a simple grep, and checked for
+one adjacent, easy-to-miss issue: duplicate library copies inflating the
+bundle.
+
+### Method
+
+`depcheck` (AST-based, not text-matching) run separately against `client`
+and `server`, plus `npm ls` to check for duplicate React/Leaflet versions
+in the dependency tree.
+
+### Result: zero unused dependencies
+
+**Server:** `depcheck` reports **no issues** — all 11 dependencies
+(`@supabase/supabase-js`, `@tensorflow/tfjs`, `bcryptjs`, `cookie-parser`,
+`cors`, `dotenv`, `express`, `express-rate-limit`, `helmet`,
+`jsonwebtoken`, `ws`) are genuinely imported and used.
+
+**Client:** `depcheck` flagged 4 devDependencies as "unused." All 4 are
+false positives, confirmed by reading the actual config files:
+
+| Package | depcheck says | Actually |
+|---|---|---|
+| `tailwindcss` | unused | Referenced in `postcss.config.js` as a PostCSS plugin; Vite's CSS pipeline invokes it by name from that config, never via a JS `import`. Removing it breaks every Tailwind class in the app. |
+| `postcss` | unused | The tool that `postcss.config.js` configures; invoked internally by Vite's build pipeline. |
+| `autoprefixer` | unused | Same as above — a PostCSS plugin referenced only by name in config. |
+| `@types/react-dom` | unused | A TypeScript-only devDependency (no `tsconfig.json` exists; the project is plain JS/JSX). It ships to editors for IntelliSense only and is never bundled — stripped entirely before build, zero runtime or bundle-size impact either way. Left in place: removing a dependency with zero performance effect, purely on a static-analysis false positive, is exactly the kind of unnecessary change rule #1 (never rewrite unnecessarily) warns against. |
+
+`depcheck` cannot see into build-tool config files (`postcss.config.js`,
+`tailwind.config.js`) or distinguish a type-only package from a bundled one
+— both are known, documented limitations of the tool, not real findings.
+
+### Duplicate-version check
+
+`npm ls react react-dom leaflet` shows every transitive dependency
+(`framer-motion`, `react-leaflet`, `recharts`, `react-router-dom`, etc.)
+resolving to the **same single copy** of React 18.3.1 and Leaflet 1.9.4
+(`deduped` in npm's output) — no second copy of either library is being
+shipped in the bundle.
+
+### Conclusion
+
+No dependency was removed. **This is not a step being skipped — it is a
+step that was run in full and found nothing to fix**, which is itself a
+useful, honest result: the codebase was already clean here before this
+optimisation pass began.

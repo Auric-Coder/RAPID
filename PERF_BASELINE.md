@@ -1162,3 +1162,80 @@ attribute is correctly applied to every relevant image, it doesn't break
 rendering, and it demonstrably responds to scroll position.
 
 Full regression: lint and build pass; full endpoint smoke test all 200.
+
+---
+
+## Step 13 — Loading skeletons
+
+**Surveyed all 8 lazy-loaded pages' initial-render behavior before
+implementing anything.** Found two distinct problems, not one:
+
+| Page | Problem |
+|---|---|
+| Analytics.jsx | Initialized with hardcoded fake-looking stats (`totalDrones: 5`, `averageBattery: 100`) - indistinguishable from real data |
+| Fleet.jsx | Blank grid, no loading indication |
+| Incidents.jsx | "No incident logs found matches filters" shown before the fetch resolves |
+| Surveillance.jsx | "No patrol missions for this state yet" shown during load |
+| RLConsole.jsx | "No completed-mission experience yet" shown during load (**and a second, initially-missed** "No training passes yet" message on its loss chart) |
+| SecurityAudit.jsx | "No security events logged yet" shown during load |
+
+**Deliberately excluded:** `Dashboard.jsx` has the same underlying gap,
+but its data is spread across 4 interdependent sub-components sharing one
+WebSocket-backed store, already gated by `RequireAuth`'s own loading
+state - fixing it properly needs a new store-level flag threaded through
+multiple files, a materially bigger change than the other 6 self-contained
+pages. `Help.jsx`'s data is user-triggered (phone lookup), not an eager
+auto-fetch, so it has no equivalent gap.
+
+### Implementation
+
+One new file, `components/shared/Skeleton.jsx` - plain pulsing blocks
+built from the `animate-pulse` utility already used throughout this
+codebase, not a new visual language. Each of the 6 pages got a `loading`
+boolean (`true` until its first fetch resolves, or - for Surveillance and
+SecurityAudit, whose fetch re-runs on a changing dependency - toggling
+again on a genuine refetch, not just mount) gating its skeleton against
+its real content.
+
+### A bug this step's own verification found, in itself
+
+While re-checking all 6 pages for *any* remaining "No X found/yet"
+message (not just the ones from the initial survey), found a **second**
+empty-state on RLConsole.jsx - a loss-chart section fed by the same
+`refresh()` call, missed because the initial survey's grep was scoped too
+narrowly. Fixed it before moving on rather than shipping a partial result.
+
+Two more were found the same way inside `Incidents.jsx`'s dossier modal
+(Timeline Log and Snapshots tabs, both fed by a separate per-incident
+`fetchDossierData()` fetch) - small, self-contained, mechanically
+identical to the fixes already made, so fixed rather than left as a known
+gap purely because they weren't in the original 6-page list.
+
+### Verified with network throttling across all 6 pages
+
+Loaded each page once unthrottled (to warm its JS chunk - isolating this
+step's data-loading skeleton from Step 11's separate chunk-loading
+Suspense fallback), then reloaded under throttled network (300ms latency,
+300kbps) and checked state immediately after the component mounted:
+
+```
+[OK] Analytics      duringLoad: skeletons=14  |  afterLoad: skeletons=0
+[OK] Fleet          duringLoad: skeletons=24  |  afterLoad: skeletons=0
+[OK] Incidents      duringLoad: skeletons=35  |  afterLoad: skeletons=0
+[OK] Surveillance   duringLoad: skeletons=12  |  afterLoad: skeletons=0
+[OK] RLConsole      duringLoad: skeletons=10  |  afterLoad: skeletons=0
+[OK] SecurityAudit  duringLoad: skeletons=8   |  afterLoad: skeletons=0
+```
+
+All 6: skeletons appear during the fetch window, zero misleading
+empty-state messages during that window, skeletons fully cleared once
+real data arrives, zero console/page errors.
+
+Dossier modal's two additional fixes verified the same way: an initial
+4-second wait showed 2 residual skeletons under heavy throttling; this
+was a test-timing artifact, not a real bug — extending to 8 seconds
+confirmed both correctly resolve to 0.
+
+Full endpoint smoke test: all 200. Client lint/build pass. Analytics
+screenshotted fully loaded: real chart data, no leftover skeleton
+artifacts.

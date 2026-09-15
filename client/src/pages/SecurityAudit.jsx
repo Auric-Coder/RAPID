@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, ShieldAlert, Lock, RefreshCw } from 'lucide-react';
 import useRapidStore from '../store/rapidStore';
+import { SkeletonRow } from '../components/shared/Skeleton';
 
 // Mirrors routes/security.js's AUDIT_READ_ROLES — client-side gate is UX
 // only, the server is the real authority (a non-commander hitting the API
@@ -42,6 +43,11 @@ function SecurityAudit() {
   const [entries, setEntries] = useState([]);
   const [chainStatus, setChainStatus] = useState(null);
   const [verifying, setVerifying] = useState(false);
+  // Step 13: without this, "No security events logged yet" showed during
+  // every fetch, not just when the log genuinely has nothing. refresh
+  // depends on `allowed`, which can flip once currentUser loads, so this
+  // legitimately toggles again then too - a real (re)fetch, not just mount.
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!allowed) return;
@@ -55,7 +61,11 @@ function SecurityAudit() {
 
   useEffect(() => {
     let ignore = false;
-    const sync = async () => { if (!ignore) await refresh(); };
+    const sync = async () => {
+      if (ignore) return;
+      setLoading(true);
+      try { await refresh(); } finally { if (!ignore) setLoading(false); }
+    };
     sync();
     return () => { ignore = true; };
   }, [refresh]);
@@ -125,7 +135,9 @@ function SecurityAudit() {
 
       <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
         <div className="space-y-2">
-          {entries.map(e => (
+          {loading ? (
+            [0, 1, 2, 3].map(i => <SkeletonRow key={i} />)
+          ) : entries.map(e => (
             <div key={e.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900/30 flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-xs font-semibold text-white truncate">{describe(e)}</div>
@@ -136,7 +148,7 @@ function SecurityAudit() {
               </span>
             </div>
           ))}
-          {entries.length === 0 && <p className="text-xs text-gray-600 font-mono text-center py-4">No security events logged yet.</p>}
+          {!loading && entries.length === 0 && <p className="text-xs text-gray-600 font-mono text-center py-4">No security events logged yet.</p>}
         </div>
       </div>
     </div>

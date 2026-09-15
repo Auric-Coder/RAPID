@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BrainCircuit, Zap, History, Radio, CheckCircle2, XCircle } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import useRapidStore from '../store/rapidStore';
+import { SkeletonRow, SkeletonChart } from '../components/shared/Skeleton';
 
 // Mirrors the server-side requireRole lists in routes/rl.js — duplicated
 // client-side (same pattern as App.jsx's ROLE_LABELS) purely to disable
@@ -33,6 +34,10 @@ function RLConsole() {
   const [feedback, setFeedback] = useState(null);
   const [switching, setSwitching] = useState(false);
   const [training, setTraining] = useState(false);
+  // Step 13: without this, "No completed-mission experience yet" showed
+  // during the initial fetch too, indistinguishable from a genuinely
+  // empty buffer.
+  const [loading, setLoading] = useState(true);
 
   const showFeedback = (type, msg) => {
     setFeedback({ type, msg });
@@ -64,7 +69,7 @@ function RLConsole() {
   useEffect(() => {
     let ignore = false;
     const sync = async () => { if (!ignore) await refresh(); };
-    sync();
+    sync().finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
   }, [refresh]);
 
@@ -214,7 +219,9 @@ function RLConsole() {
           </div>
 
           <div className="h-32">
-            {lossChartData.length > 1 ? (
+            {loading ? (
+              <SkeletonChart />
+            ) : lossChartData.length > 1 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={lossChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1F2E45" />
@@ -235,7 +242,9 @@ function RLConsole() {
       <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
         <h3 className="font-bold text-sm text-white uppercase tracking-wider mb-4">Recent Experience Tuples</h3>
         <div className="space-y-2">
-          {experience.map(e => (
+          {loading ? (
+            [0, 1, 2, 3].map(i => <SkeletonRow key={i} />)
+          ) : experience.map(e => (
             <div key={e.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900/30 flex items-center justify-between">
               <div>
                 <div className="text-xs font-bold text-white">{callSignFor(e.action?.droneId)} — {e.action?.type}</div>
@@ -256,7 +265,7 @@ function RLConsole() {
               </div>
             </div>
           ))}
-          {experience.length === 0 && <p className="text-xs text-gray-600 font-mono text-center py-4">No completed-mission experience yet.</p>}
+          {!loading && experience.length === 0 && <p className="text-xs text-gray-600 font-mono text-center py-4">No completed-mission experience yet.</p>}
         </div>
       </div>
     </div>

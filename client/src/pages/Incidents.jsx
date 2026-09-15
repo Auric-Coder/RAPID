@@ -1,20 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FileText, Search, Filter, Shield, Clock, Phone, User, Calendar, Info, X, 
+import {
+  FileText, Search, Filter, Shield, Clock, Phone, User, Calendar, Info, X,
   Video, Music, Image as ImageIcon, MapPin, Cpu, Download, List, AlertTriangle
 } from 'lucide-react';
+import { SkeletonBlock, SkeletonRow } from '../components/shared/Skeleton';
+
+// Step 13: a table-row-shaped skeleton, kept local since this is the only
+// table (as opposed to card/list) layout among the pages that needed one.
+function SkeletonTableRow() {
+  return (
+    <tr>
+      <td className="p-4"><SkeletonBlock className="h-4 w-40 mb-1.5" /><SkeletonBlock className="h-2.5 w-24" /></td>
+      <td className="p-4"><SkeletonBlock className="h-3 w-16" /></td>
+      <td className="p-4"><SkeletonBlock className="h-4 w-14 rounded-full" /></td>
+      <td className="p-4"><SkeletonBlock className="h-3 w-24" /></td>
+      <td className="p-4"><SkeletonBlock className="h-3 w-16" /></td>
+      <td className="p-4 text-center"><SkeletonBlock className="h-6 w-24 mx-auto" /></td>
+    </tr>
+  );
+}
 
 function Incidents() {
   const [incidents, setIncidents] = useState([]);
+  // Step 13: without this, "No incident logs found matches filters" showed
+  // during the initial fetch too, indistinguishable from a genuinely empty
+  // registry.
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterSeverity, setFilterSeverity] = useState('all');
-  
+
   // Inspection panel modal
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
   const [incidentSnapshots, setIncidentSnapshots] = useState([]);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'media', 'snapshots', 'timeline', 'ai'
+  // Step 13: a second, separate loading window found during verification -
+  // "No timeline records found" showed in the dossier's Timeline Log tab
+  // during the per-incident fetchDossierData() fetch, same underlying
+  // problem as the main table's `loading` flag, just for the modal.
+  const [dossierLoading, setDossierLoading] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -28,6 +53,8 @@ function Incidents() {
         }
       } catch (err) {
         if (!ignore) console.error(err);
+      } finally {
+        if (!ignore) setLoading(false);
       }
     };
 
@@ -40,6 +67,7 @@ function Incidents() {
     if (!selectedIncident) return;
 
     const fetchDossierData = async () => {
+      setDossierLoading(true);
       try {
         const logRes = await fetch(`/api/incidents/${selectedIncident.id}/logs`);
         if (logRes.ok) {
@@ -54,6 +82,8 @@ function Incidents() {
         }
       } catch (err) {
         console.error(err);
+      } finally {
+        setDossierLoading(false);
       }
     };
     fetchDossierData();
@@ -156,7 +186,9 @@ function Incidents() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/40">
-            {filteredIncidents.map((inc) => {
+            {loading ? (
+              [0, 1, 2, 3, 4].map(i => <SkeletonTableRow key={i} />)
+            ) : filteredIncidents.map((inc) => {
               const severityStyles = inc.severity === 'critical' 
                 ? 'text-red-400 bg-red-500/10 border-red-500/20' 
                 : inc.severity === 'high' 
@@ -203,7 +235,7 @@ function Incidents() {
               );
             })}
 
-            {filteredIncidents.length === 0 && (
+            {!loading && filteredIncidents.length === 0 && (
               <tr>
                 <td colSpan="6" className="p-8 text-center text-gray-500 italic">
                   No incident logs found matches filters.
@@ -364,7 +396,12 @@ function Incidents() {
               {/* Tab: Evidence Snapshots */}
               {activeTab === 'snapshots' && (
                 <div className="space-y-4">
-                  {incidentSnapshots.length > 0 ? (
+                  {dossierLoading ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <SkeletonBlock className="h-40 w-full" />
+                      <SkeletonBlock className="h-40 w-full" />
+                    </div>
+                  ) : incidentSnapshots.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4">
                       {incidentSnapshots.map((snap) => (
                         <div 
@@ -406,7 +443,9 @@ function Incidents() {
               {activeTab === 'timeline' && (
                 <div className="space-y-4">
                   <div className="space-y-3">
-                    {auditLogs.map((log) => (
+                    {dossierLoading ? (
+                      [0, 1, 2].map(i => <SkeletonRow key={i} />)
+                    ) : auditLogs.map((log) => (
                       <div key={log.id} className="relative pl-5 border-l border-cyan-500/20 py-1">
                         <div className="absolute -left-[4px] top-2.5 h-2 w-2 bg-cyan-400 rounded-full glow-cyan"></div>
                         <div className="flex justify-between items-center text-[10px] font-mono text-gray-500">
@@ -419,7 +458,7 @@ function Incidents() {
                       </div>
                     ))}
 
-                    {auditLogs.length === 0 && (
+                    {!dossierLoading && auditLogs.length === 0 && (
                       <p className="text-xs text-gray-500 italic py-6 text-center">No timeline records found.</p>
                     )}
                   </div>

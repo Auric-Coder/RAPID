@@ -811,3 +811,45 @@ is necessarily narrower than earlier steps:
   scanned) requires checking the Supabase dashboard's query performance
   view after running the SQL above — this is the one place in this pass
   I cannot close the loop myself.
+
+---
+
+## Step 8 — Database connection pooling: verified not applicable
+
+Phase 0 assessed this as inapplicable based on architecture (Supabase-js
+being a REST client). This step re-verified that assessment with direct
+evidence rather than relying on the earlier assumption.
+
+### Evidence
+
+1. **No `pg` driver anywhere.** Checked `@supabase/supabase-js`'s full
+   dependency tree — `@supabase/postgrest-js`, `realtime-js`,
+   `functions-js`, `storage-js`, `auth-js` — zero occurrences of `pg`,
+   `Pool`, or any raw Postgres client package.
+2. **Every query is HTTPS, not a persistent TCP connection.**
+   `@supabase/postgrest-js` communicates via `fetch`/`http.request` over
+   HTTPS to Supabase's stateless PostgREST endpoint. There is no database
+   connection on this app's side to pool — the concept doesn't apply to
+   the architecture, not just "isn't configured."
+3. **Supabase pools on its own side** (PgBouncer, between PostgREST and
+   Postgres) — that is Supabase's infrastructure, invisible to and
+   uncontrollable by this app's code.
+
+### Adjacent concept checked and confirmed fine: HTTP keep-alive
+
+A related but distinct optimisation — reusing TCP/TLS connections across
+repeated HTTPS requests to the same host — was checked separately.
+`config/database.js` calls `createClient()` with no custom `fetch`
+option, so `@supabase/supabase-js` defaults to Node 22's native `fetch`
+(powered by `undici`), which pools and reuses connections per-origin
+**automatically**, with no configuration needed or exposed through the
+client's public API. Nothing to add here either.
+
+### Conclusion
+
+Implementing "connection pooling" in this codebase would mean adding a
+raw `pg` client as a second, parallel data-access path alongside the
+existing Supabase REST client — pure added complexity with no
+performance benefit, since Supabase already pools server-side and Node
+already reuses HTTP connections client-side. Skipped, with evidence
+rather than assumption.

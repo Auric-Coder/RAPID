@@ -1606,3 +1606,59 @@ on both loads - correctly always hits the network.
 Full smoke test: all API endpoints 200, SPA deep-linking to `/dashboard`
 still works, unknown routes still correctly rejected. Client lint
 unaffected (server-only change).
+
+---
+
+## Step 20 — Evaluate load balancer requirements
+
+**Recommendation: do not add a load balancer. Verified this would be
+actively harmful to correctness, not merely unnecessary for traffic
+reasons.**
+
+Phase 0 flagged this as likely harmful based on architecture; this step
+re-verified with specific evidence rather than repeating that assumption.
+
+### Every piece of in-process state that a second instance would break
+
+| Component | What breaks under 2+ instances |
+|---|---|
+| `simulatorService.js` | A singleton 1Hz background loop that moves every drone and advances mission state directly against the database. Two instances means two independent loops racing to update the same rows - a drone could be moved twice per tick, or two instances could each independently detect "arrived" and trigger duplicate downstream actions (double recording starts, double dispatch log entries). |
+| `websocketService.js` | Holds connected clients in an in-process list (`wss.clients`). A client connected to Instance A never receives a broadcast triggered by a database change Instance B's simulator tick processed - real-time updates would arrive inconsistently depending purely on which instance a client happened to land on. |
+| `middleware/apiCache.js` (Steps 5/6/18) | Explicitly documented as in-process in three prior commits. Under multiple instances, each holds its own independent cache with independently-expiring TTLs - two users hitting different instances could see different, unsynchronized cached values for the same data. |
+| In-memory DB fallback (`config/database.js`) | If Supabase credentials are ever absent, the entire dataset lives in one process's memory. Multiple instances would each hold a completely different, diverging dataset - a drone created via instance A simply wouldn't exist on instance B. |
+| `express-rate-limit` (`routes/auth.js`) | Uses the default in-memory `MemoryStore` - confirmed by reading the config, no `store` option is set. N instances means N independent attempt counters, so the effective login rate limit becomes N times weaker than configured (an attacker round-robining across instances gets N x the intended budget). |
+
+### One positive finding, for balance
+
+JWT-in-httpOnly-cookie authentication is genuinely stateless - the token
+itself carries the session, verified against a shared secret, no
+server-side session store involved. This part of the app would scale
+horizontally without any changes. The blockers above are specifically
+the background simulator, WebSocket broadcast, in-process caches, and
+rate limiter - not the REST API's core request handling.
+
+### Confirmed current deployment
+
+`render.yaml` declares a single `type: web` service with no `scaling` or
+`numInstances` configuration - genuinely single-instance today, not
+"single instance that happens to already tolerate scaling."
+
+### Conclusion
+
+Every one of the five blockers above needs its own fix *before* a load
+balancer would be safe to add - a shared job-queue or leader-election
+scheme for the simulator, a pub/sub layer (e.g. Redis) for WebSocket
+broadcast fan-out across instances, a shared cache store, and a shared
+rate-limit store. That is a substantial, multi-part infrastructure
+project in its own right, not a checkbox to enable alongside a load
+balancer. Given the current single-region, non-horizontally-scaled
+deployment shows no evidence of needing more capacity, adding a load
+balancer now would mean taking on that entire migration for a problem
+that does not yet exist - textbook premature infrastructure. Revisit if
+real traffic ever demonstrates the single instance is actually a
+bottleneck; until then, each of the five items above is worth knowing
+about on its own merits (particularly the rate-limiter's shared-store gap,
+which is a real security posture question independent of scaling).
+
+No code change made in this step - it is an evaluation, and the
+evaluation's answer is not to add the infrastructure.

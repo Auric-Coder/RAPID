@@ -1013,18 +1013,28 @@ const db = {
      * truncation happen in the database rather than in Node, so only `limit`
      * rows cross the wire instead of (drones x perDroneLimit) rows.
      */
-    async listRecent(limit = 100) {
+    async listRecent(limit = 100, droneIds = null) {
+      // droneIds restricts the feed to a caller's in-scope drones. Passing
+      // null means no restriction - callers that have already established
+      // the caller may see the whole fleet should pass null rather than a
+      // list of every id, to keep the PostgREST query string short.
+      if (droneIds && droneIds.length === 0) return [];
+
       if (isSupabaseEnabled) {
         try {
-          const { data, error } = await supabase
+          let query = supabase
             .from('controller_actions')
-            .select('*')
+            .select('*');
+          if (droneIds) query = query.in('drone_id', droneIds);
+          const { data, error } = await query
             .order('timestamp', { ascending: false })
             .limit(limit);
           if (!error) return data;
         } catch (_) {}
       }
-      return [...localDb.controller_actions]
+      const allowed = droneIds ? new Set(droneIds) : null;
+      return localDb.controller_actions
+        .filter(a => !allowed || allowed.has(a.drone_id))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .slice(0, limit);
     },

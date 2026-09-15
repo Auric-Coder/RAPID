@@ -337,11 +337,30 @@ router.post('/reassign', requireRole(...DISPATCH_ROLES), async (req, res) => {
  */
 router.get('/decisions', async (req, res) => {
   try {
-    // One query for the whole feed. This previously looped over every drone
-    // issuing listForDrone() each time (1+N: 23 database calls for a 22-drone
-    // fleet), fetched up to drones x 20 rows, then discarded all but 100.
-    // listRecent() lets the database do the ordering and truncation.
-    const recentActions = await db.controllerActions.listRecent(100);
+    // Scope first: this feed previously returned every drone's controller
+    // actions to any authenticated caller, so a user from another
+    // organisation (e.g. AVIATION_CONTROL, which owns no drones) could read
+    // POLICE activity. Restrict it the same way /api/drones does.
+    const [drones, allowedBaseIds] = await Promise.all([
+      db.drones.list(),
+      resolveAllowedBaseIds(req.user)
+    ]);
+    const allowedBases = new Set(allowedBaseIds);
+    const visibleDrones = drones.filter(d => allowedBases.has(d.base_id));
+
+    if (visibleDrones.length === 0) return res.json([]);
+
+    // Pass null when the caller can see the entire fleet, so the query stays
+    // unfiltered rather than carrying an `in` list of every drone id.
+    const droneIds = visibleDrones.length === drones.length
+      ? null
+      : visibleDrones.map(d => d.id);
+
+    // One query for the feed. This previously looped over every drone issuing
+    // listForDrone() each time (1+N: 23 database calls for a 22-drone fleet),
+    // fetched up to drones x 20 rows, then discarded all but 100.
+    // listRecent() lets the database do the filtering, ordering and truncation.
+    const recentActions = await db.controllerActions.listRecent(100, droneIds);
 
     res.json(recentActions);
   } catch (err) {

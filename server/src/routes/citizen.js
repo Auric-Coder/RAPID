@@ -100,7 +100,7 @@ router.post('/voice-report', async (req, res) => {
       return res.status(400).json({ error: 'location.lat and location.lng are required.' });
     }
 
-    const result = voicePipeline.process({
+    const result = await voicePipeline.process({
       transcript,
       audioBase64,
       latitude: parseFloat(location.lat),
@@ -139,10 +139,11 @@ router.post('/emergency', requireCitizenAuth, async (req, res) => {
     let aiClassified = false;
 
     if (!finalCategory && textReport) {
-      const classification = voicePipeline.process({
+      const classification = await voicePipeline.process({
         transcript: textReport,
         latitude: parseFloat(location.lat),
-        longitude: parseFloat(location.lng)
+        longitude: parseFloat(location.lng),
+        citizenMedicalInfo: req.citizen.medical_info || null
       });
       finalCategory = classification.structuredIncident.category;
       finalSeverity = classification.structuredIncident.severity;

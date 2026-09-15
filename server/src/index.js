@@ -143,10 +143,39 @@ app.use('/api/security', securityRoutes);
 // block is skipped and Vite's dev server + proxy handles the client.
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
+  // Step 19 (performance): previously served with Express's default
+  // Cache-Control: public, max-age=0 — every visit forced a revalidation
+  // round trip, even for files under assets/ that Vite gives a content
+  // hash (e.g. index-Q1_jgz5V.js). The hash IS the cache key: a new build
+  // produces a new filename, never new content at the old one, so once a
+  // browser has one of these it never needs to ask again. Only /assets/
+  // gets the long, immutable cache; index.html (below) deliberately does
+  // not, since it's what references each new deploy's hashed filenames.
+  app.use(express.static(clientDistPath, {
+    // `index: false` stops express.static's own default behaviour of
+    // serving index.html directly for a directory request (`/`) using ITS
+    // default headers, before the explicit no-cache route below runs.
+    // That alone doesn't cover a request for the literal filename
+    // (`/index.html`) though — express.static still serves any real file
+    // by name regardless of this option — so setHeaders below sets
+    // no-cache there too, making the header correct no matter which code
+    // path actually serves the file.
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith(`${path.sep}index.html`)) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    }
+  }));
   // Anything not under /api falls through to the SPA shell so client-side
-  // routing (React Router) handles it.
+  // routing (React Router) handles it. Explicit no-cache: this file must
+  // never be served stale, or a returning visitor could keep loading an
+  // old deploy's index.html pointing at asset filenames that no longer
+  // exist after the next build overwrites client/dist.
   app.get(/^(?!\/api).*/, (req, res) => {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }

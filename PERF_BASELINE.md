@@ -1534,3 +1534,75 @@ serve past the TTL). `/historical` re-verified the same way
 (`goa`/`punjab` each seeing their own correct `droneUsage` list length).
 
 Full 7-endpoint smoke test: all 200. Client lint unaffected.
+
+---
+
+## Step 19 — Review CDN requirements
+
+**Recommendation: do not add a CDN, with the cost/complexity stated
+explicitly rather than just asserting it.**
+
+External assets already correctly use CDNs (map tiles via Carto, images
+via Unsplash) - confirmed in Step 14, no action needed there.
+
+For the app's own bundle: adding a CDN in front of the whole Render
+service means configuring it to never cache API responses - a real
+misconfiguration risk. Deploying the client separately to a dedicated
+static/CDN host while keeping the API on Render would make API calls
+cross-origin, reintroducing exactly the CORS/`SameSite=None` cookie
+complexity `index.js`'s own comments say was deliberately avoided by
+keeping client+API same-origin. CDNs earn their cost with geographic
+distribution and high traffic; this is a single-region app, not a
+globally-distributed one. Revisit if either changes.
+
+### What investigating this surfaced instead: missing Cache-Control
+
+Checked what headers the app's own static assets are actually served
+with, rather than assuming a CDN was the only lever available. Found
+`Cache-Control: public, max-age=0` on every file, including Step 11's
+content-hashed chunks (`index-Q1_jgz5V.js`) - meaning every single visit
+forced a server round trip to revalidate, even though the filename hash
+IS the cache key: a new build produces a new filename, never new content
+at the old one. This is the actual prerequisite regardless of the CDN
+decision - a CDN also needs correct Cache-Control to know what it's
+allowed to cache.
+
+### Fix
+
+`express.static` now sets `Cache-Control: public, max-age=31536000,
+immutable` only on files under `/assets/`. `index.html` explicitly gets
+`no-cache` instead - it's the one file that references each new deploy's
+hashed filenames and must never be served stale.
+
+### Two bugs my own verification caught before shipping
+
+1. `express.static`'s default index-file behaviour serves `index.html`
+   directly for `/` using its own headers, bypassing the explicit
+   no-cache route entirely - confirmed by checking the header myself,
+   which still showed `max-age=0` after the first attempt. Fixed with
+   `index: false`.
+2. That fix alone didn't cover a request for the literal filename
+   (`/index.html`) - express.static still serves any real file by name
+   regardless of the `index` option. Caught by testing that path
+   specifically, not assumed fixed. Fixed by handling both cases in the
+   same `setHeaders` callback, so the header is correct no matter which
+   code path actually serves the file.
+
+### Verified
+
+```
+/               Cache-Control: no-cache
+/index.html     Cache-Control: no-cache
+/assets/*.js    Cache-Control: public, max-age=31536000, immutable
+/assets/*.css   Cache-Control: public, max-age=31536000, immutable
+```
+
+Confirmed with a real headless browser, not just headers: loaded `/login`
+twice in the same browser session. JS/CSS assets showed `fromCache: true`
+on the second load - genuinely zero network round trip, not just a fast
+304. The document response (`/login` itself) showed `fromCache: false`
+on both loads - correctly always hits the network.
+
+Full smoke test: all API endpoints 200, SPA deep-linking to `/dashboard`
+still works, unknown routes still correctly rejected. Client lint
+unaffected (server-only change).

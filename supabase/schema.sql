@@ -139,9 +139,19 @@ CREATE TABLE IF NOT EXISTS telemetry_history (
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
     altitude DOUBLE PRECISION NOT NULL,
+    speed DOUBLE PRECISION DEFAULT 0,
+    heading DOUBLE PRECISION DEFAULT 0,
     battery_level INT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- speed/heading were missing from this table while the telemetry simulator
+-- has always written them, so every insert failed against Supabase with
+-- "Could not find the 'heading' column" and telemetry_history stayed empty.
+-- These two statements bring an already-deployed database up to date; they
+-- are safe to re-run.
+ALTER TABLE telemetry_history ADD COLUMN IF NOT EXISTS speed DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE telemetry_history ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_drone_time ON telemetry_history(drone_id, timestamp DESC);
 

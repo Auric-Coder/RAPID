@@ -270,3 +270,76 @@ neither caused nor worsened it. It was left untouched because this step's
 guarantee was "no behavioural change", and silently altering an authorisation
 boundary inside a performance commit would be the wrong place for it.
 **Recommend fixing separately.**
+
+---
+
+## Environment change: Supabase became the live backend
+
+Part-way through the optimisation pass a `server/.env` with real Supabase
+credentials appeared, and the server switched from
+`Database: Using in-memory database simulation` to
+`Database: Supabase backend connected`.
+
+Everything in the sections above was measured against **in-memory**. The
+DB-call counts remain valid (they are backend-independent, which is exactly
+why they were chosen as the metric). The **latency** figures above measure
+Express overhead only and should be ignored; the real figures are below.
+
+### Cost of one Supabase round trip
+
+| Endpoint | DB round-trip waves | avg latency |
+|---|---:|---:|
+| `/api/geo/states` | 1 | **220 ms** |
+| `/api/drones` | 2 | **447 ms** |
+| `/api/incidents` | 2 | 442 ms |
+| `/api/fleet/decisions` | 2 | 450 ms |
+
+One PostgREST round trip costs roughly **220 ms** from this machine, and
+latency tracks the number of *sequential* waves almost exactly. Note it is
+waves, not total calls: `/api/incidents` issues 3 calls but two of them run
+concurrently inside a `Promise.all`, so it costs 2 waves, not 3.
+
+Against in-memory every one of these was ~1.5 ms. Supabase is roughly
+**300x slower per call**, which is why query *count* was the right thing to
+optimise.
+
+### Step 2 measured on Supabase (the real result)
+
+Benchmarked by checking out the pre-optimisation code (`7a71da0`) for
+`routes/fleet.js`, `routes/incidents.js` and `services/auth/scopeResolver.js`,
+measuring, then restoring. n=10 per endpoint, after warm-up.
+
+| Endpoint | Before (N+1) | After | Change |
+|---|---:|---:|---|
+| `GET /api/fleet/decisions` | **5,337 ms** | **440 ms** | **−91.8%, 12.1x faster** |
+| `GET /api/incidents` | **1,410 ms** | **437 ms** | **−69.0%, 3.2x faster** |
+| `GET /api/drones` | 664 ms | 425 ms | unchanged code - variance |
+| `GET /api/geo/bases?limit=500` | 579 ms | 417 ms | unchanged code - variance |
+
+`/api/fleet/decisions` went from **23 sequential round trips to 2**:
+23 x ~220 ms is ~5.1 s, which matches the measured 5.34 s almost exactly.
+
+Honest note on the last two rows: `/api/drones` and `/api/geo/bases` issue the
+same number of calls before and after, so their apparent gains are measurement
+variance (the old-code run showed higher p95s across every endpoint,
+indicating background contention), **not** an effect of this work. Only the
+first two rows are real.
+
+Step 1 recorded "no measurable improvement" for Step 2 because the in-memory
+backend could not show it. On the backend that actually ships, the improvement
+is nearly 5 seconds on one endpoint.
+
+### Production defects found and fixed (not checklist items)
+
+1. **State commanders locked out.** `users.scope_id` referenced state UUIDs
+   that existed in no `states` row, so `goa.commander` and `punjab.commander`
+   saw 0 drones, 0 bases and 0 incidents. Confirmed present in the original
+   `7a71da0` code, so unrelated to the optimisation work. Fixed in commit
+   `117615a`; after the fix they see 5 and 17 drones respectively.
+2. **`telemetry_history` never written on Supabase.** The table lacked `speed`
+   and `heading` while the simulator writes both, failing every insert once a
+   second. `schema.sql` now declares them and carries idempotent
+   `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements.
+   **These are DDL and must be run once in the Supabase SQL editor** - they
+   cannot be applied through the JS client, and the insert failures continue
+   until they are.

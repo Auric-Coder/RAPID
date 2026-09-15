@@ -517,3 +517,79 @@ No dependency was removed. **This is not a step being skipped — it is a
 step that was run in full and found nothing to fix**, which is itself a
 useful, honest result: the codebase was already clean here before this
 optimisation pass began.
+
+---
+
+## Step 5 — API response caching
+
+**Scope:** an in-process response cache in front of 4 of the 5 `/api/geo/*`
+endpoints — deliberately narrow, per the caching-safety rules stated up
+front (cache key / TTL / invalidation / stale-data risk, never cache
+user-scoped data).
+
+### What's cached, and why each one is safe
+
+| Endpoint | TTL | Why safe |
+|---|---:|---|
+| `GET /api/geo/nations` | 10 min | Zero mutation routes exist anywhere in the app; not user-scoped |
+| `GET /api/geo/states` | 10 min | Same |
+| `GET /api/geo/districts?state=X` | 10 min | Same |
+| `GET /api/geo/map-config?state=X` | 60s + active invalidation | Not user-scoped, but its `noFlyZones` field reads live, mutable `airspace_zones` data. `routes/airspace.js`'s create/update/delete zone routes now call `invalidate('geo:map-config:')` directly, so an edited no-fly zone is reflected on the very next fetch — the 60s TTL is a backstop, not the primary correctness mechanism, given this is safety-relevant drone-operations data. |
+
+### Deliberately NOT cached
+
+`GET /api/geo/bases` — this route filters through
+`resolveAllowedBaseIds(req.user)`. Two different users hitting the
+identical URL get different, organisation-scoped results; caching it by
+URL would leak one organisation's base list to another. Documented
+in-line in `routes/geo.js` rather than silently left out.
+
+### Implementation
+
+`server/src/middleware/apiCache.js` — a small, dependency-free in-memory
+`Map`. No Redis, no new package: the app is a single Express process (one
+Render web service, no horizontal scaling — confirmed in `render.yaml`),
+so an in-process cache is the simplest *correct* choice today. The module
+states explicitly that it would need to become a shared store the moment
+a second instance runs behind a load balancer (Step 20's territory).
+
+### Verification
+
+Automated: request each cacheable endpoint twice, assert `X-Cache: MISS`
+then `X-Cache: HIT`.
+
+```
+[OK] /api/geo/nations                       1st=MISS 2nd=HIT
+[OK] /api/geo/states                        1st=MISS 2nd=HIT
+[OK] /api/geo/districts?state=GA            1st=MISS 2nd=HIT
+[OK] /api/geo/map-config?state=GA           1st=MISS 2nd=HIT
+```
+
+Scoping safety, proven rather than assumed: fetched `/api/geo/bases` as
+`goa.commander` and `punjab.commander` in the same test run — 5 bases vs
+17 bases, confirming the route is genuinely per-user and correctly
+excluded from caching (no `X-Cache` header present at all).
+
+Invalidation, proven under load: created a real airspace zone via
+`POST /api/airspace/zones`, confirmed the warm `map-config` cache (which
+had just returned `HIT`) flipped to `MISS` on the very next request —
+i.e. the write correctly busted the cache rather than waiting out the
+60-second TTL.
+
+Full endpoint smoke test (12 routes) — all 200 after the change. Client
+`lint`/`build` unaffected and still pass (server-only change).
+
+### A bug this verification surfaced (not fixed here — see below)
+
+While proving invalidation, the newly created zone did not appear in
+`noFlyZones` even after the cache correctly refreshed. Traced to a
+pre-existing defect in `db.states.get(id)` (`config/database.js`) that
+predates this optimisation pass and is unrelated to the cache: on
+Supabase, it filters by `.eq('id', id)` even when called with a *state
+code* like `'GA'` (as 9 call sites across the app do), which can never
+match a UUID column, and silently falls through to an in-memory fallback
+seeded with fresh random UUIDs on every process boot. The `code`/`name`
+fields it returns are correct; `.id` is not, and downstream foreign-key
+filtering against Supabase (districts, bases, airspace zones) built from
+that `.id` silently returns zero rows. Full details reported separately;
+not fixed as part of Step 5 per the one-issue-per-step rule.

@@ -337,18 +337,13 @@ router.post('/reassign', requireRole(...DISPATCH_ROLES), async (req, res) => {
  */
 router.get('/decisions', async (req, res) => {
   try {
-    const drones = await db.drones.list();
-    const allActions = [];
+    // One query for the whole feed. This previously looped over every drone
+    // issuing listForDrone() each time (1+N: 23 database calls for a 22-drone
+    // fleet), fetched up to drones x 20 rows, then discarded all but 100.
+    // listRecent() lets the database do the ordering and truncation.
+    const recentActions = await db.controllerActions.listRecent(100);
 
-    for (const drone of drones) {
-      const actions = await db.controllerActions.listForDrone(drone.id, 20);
-      allActions.push(...actions);
-    }
-
-    // Sort by timestamp descending
-    allActions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    res.json(allActions.slice(0, 100));
+    res.json(recentActions);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

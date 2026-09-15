@@ -9,10 +9,16 @@ const { OPERATING_AREAS } = require('../config/geoConfig');
 // Incidents don't carry a state_id — they're scoped by whether their
 // coordinates fall inside one of the caller's allowed states' bounds.
 async function boundsForAllowedStates(user) {
-  const stateIds = await resolveAllowedStateIds(user);
-  const states = await Promise.all(stateIds.map(id => db.states.get(id)));
-  return states
-    .filter(Boolean)
+  // One states.list() instead of one states.get() per allowed state. The
+  // previous Promise.all made those reads concurrent but not fewer - still
+  // N round trips under Supabase, on an endpoint the dashboard polls.
+  const [stateIds, allStates] = await Promise.all([
+    resolveAllowedStateIds(user),
+    db.states.list({})
+  ]);
+  const allowed = new Set(stateIds);
+  return allStates
+    .filter(s => allowed.has(s.id))
     .map(s => OPERATING_AREAS.find(a => a.stateCode === s.code))
     .filter(Boolean)
     .map(a => a.bounds);

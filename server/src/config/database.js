@@ -1004,6 +1004,31 @@ const db = {
         .slice(0, limit);
     },
 
+    /**
+     * Most recent controller actions across the whole fleet, newest first.
+     *
+     * Exists so routes/fleet.js's decision feed can issue ONE query instead
+     * of one listForDrone() per drone (a 1+N: 23 calls for a 22-drone fleet,
+     * each a separate PostgREST round trip under Supabase). Sorting and
+     * truncation happen in the database rather than in Node, so only `limit`
+     * rows cross the wire instead of (drones x perDroneLimit) rows.
+     */
+    async listRecent(limit = 100) {
+      if (isSupabaseEnabled) {
+        try {
+          const { data, error } = await supabase
+            .from('controller_actions')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+          if (!error) return data;
+        } catch (_) {}
+      }
+      return [...localDb.controller_actions]
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit);
+    },
+
     async listForMission(missionId, limit = 50) {
       if (isSupabaseEnabled) {
         try {

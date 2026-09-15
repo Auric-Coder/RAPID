@@ -186,3 +186,87 @@ npm run lint --prefix client
 API latency, DB-call counts and WebSocket frame rates were measured with
 throwaway scripts kept outside the repository; they required **no changes to
 project source**.
+
+---
+
+# Optimisation log
+
+## Step 2 — Fix N+1 database queries
+
+**Metric:** database calls per request (backend-independent; each call becomes
+one HTTPS round trip to PostgREST when Supabase is enabled).
+
+| Endpoint | Before | After | Change |
+|---|---:|---:|---|
+| `GET /api/fleet/decisions` | **23** | **1** | −96% — and now O(1), not O(drones) |
+| `GET /api/incidents` | 3–5 (scaled with allowed states) | **3** | now constant |
+| `GET /api/drones` | 2 | 2 | unchanged (no defect) |
+| `GET /api/geo/bases?limit=500` | 2 | 2 | unchanged — see note below |
+
+Before → after breakdowns:
+
+```
+/api/fleet/decisions
+  before:  drones.list x1, controllerActions.listForDrone x22
+  after:   controllerActions.listRecent x1
+
+/api/incidents  (national commander, 2 allowed states)
+  before:  bases.list x2, states.get x2, incidents.list x1
+  after:   bases.list x1, states.list x1, incidents.list x1
+```
+
+### Changes
+
+1. `config/database.js` — new `controllerActions.listRecent(limit)` on **both**
+   the Supabase and in-memory branches. The Supabase branch orders and limits
+   in the database, so only `limit` rows cross the wire.
+2. `routes/fleet.js` — `/decisions` calls `listRecent(100)` once instead of
+   looping `listForDrone()` per drone.
+3. `services/auth/scopeResolver.js` — extracted `selectAllowedBases()` so
+   `resolveAllowedBaseIds` and `resolveAllowedStateIds` each satisfy themselves
+   from a single `db.bases.list()`. Previously `resolveAllowedStateIds` read the
+   bases table twice per request.
+4. `routes/incidents.js` — one `states.list()` replaces N `states.get()` calls.
+   The old `Promise.all` made those concurrent but not fewer.
+
+### Verification
+
+Scoping behaviour compared across **five roles** (`national.commander`,
+`goa.commander`, `punjab.commander`, `aviation.control`, `observer`) using fixed
+probe incidents at known coordinates in each state. Compared visible call-signs,
+base codes, incident visibility, and response shape. **Output was identical
+before and after.** Organisation isolation still holds — `aviation.control`
+still sees an empty fleet.
+
+All API endpoints smoke-tested at 200. Client lint exits 0; client build passes.
+
+### Deliberate behaviour change (one)
+
+The old `/decisions` implementation took the newest **20 per drone**, merged,
+sorted, then truncated to 100. That per-drone cap was an artefact of the loop,
+and it made the feed incorrect: a busy drone's genuinely-recent entries could be
+dropped while an idle drone's older entries were kept. The new implementation
+returns the true newest 100 across the fleet.
+
+Verified: flooding one drone with 40 actions now returns up to 45 of its entries
+in the feed, where the old code would have capped it at 20. For a "recent fleet
+decisions" feed this is the correct semantics, but it **is** a change.
+
+### Not changed, and why
+
+`/api/geo/bases` still issues 2 `bases.list` calls. These are **two different
+queries** — one filtered by state/district, one unfiltered for scope resolution —
+not a duplicate read. Collapsing them would mean fetching every base and
+filtering in Node, pushing work *out* of the database. Left as is.
+
+### Pre-existing issue found, NOT fixed (needs a decision)
+
+`GET /api/fleet/decisions` applies **no scope filtering at all**. Measured:
+`aviation.control` — a different organisation with zero drones and zero bases —
+receives all 10 controller actions belonging to POLICE drones.
+
+This is a cross-organisation data leak and it predates this step; the refactor
+neither caused nor worsened it. It was left untouched because this step's
+guarantee was "no behavioural change", and silently altering an authorisation
+boundary inside a performance commit would be the wrong place for it.
+**Recommend fixing separately.**

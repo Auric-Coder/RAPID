@@ -416,7 +416,7 @@ function Help() {
               ) : (
                 <div className="flex flex-col items-center justify-center py-4 text-center">
                   <AlertTriangle className="h-5 w-5 text-orange-500 animate-bounce mb-1" />
-                  <p className="text-xs text-gray-400">A responder has been alerted. You'll see it here when it's on the way.</p>
+                  <p className="text-xs text-gray-400">A responder has been alerted. You&rsquo;ll see it here when it&rsquo;s on the way.</p>
                 </div>
               )}
             </div>

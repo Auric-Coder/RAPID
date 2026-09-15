@@ -339,6 +339,12 @@ if (isSupabaseEnabled) {
 
 const supabase = isSupabaseEnabled ? createClient(supabaseUrl, supabaseKey) : null;
 
+// Step 6 (performance): query-level cache for the unfiltered bases.list()
+// call — see the comment on bases.list() below for why and its safety
+// contract (bases have zero mutation routes anywhere in the app).
+let basesListCache = null; // { expires: epoch ms, data: array } | null
+const BASES_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+
 // Database Adapter Interface
 const db = {
   isSupabase: isSupabaseEnabled,
@@ -410,20 +416,50 @@ const db = {
   },
 
   bases: {
+    // Step 6 (performance): the fully-unfiltered call shape — list() /
+    // list({}) — is cached for 5 minutes. This exact shape is what
+    // scopeResolver.js's resolveAllowedBaseIds/resolveAllowedStateIds call
+    // on nearly every authenticated request (it runs behind requireAuth,
+    // so /api/drones, /api/incidents, /api/geo/*, /api/fleet/* all trigger
+    // it), plus surveillanceCoordinator.js and rl/environment.js — making
+    // it the single most-executed query in the app. On Supabase this is a
+    // ~220ms round trip repeated on almost every API call.
+    //
+    // Filtered calls (routes/geo.js's /bases route passes {stateId,
+    // districtId}) are NOT cached and always hit the live query — a
+    // narrower, lower-traffic shape not worth a multi-key cache here.
+    //
+    // Safe because bases have ZERO mutation routes anywhere in the app
+    // (confirmed in the Step 5 dependency/route audit) — a 5-minute TTL is
+    // a defensive bound, not a real staleness risk. If a base-mutation
+    // route is ever added, it MUST clear `basesListCache` below (set it to
+    // null), or this cache will silently serve stale data for up to 5
+    // minutes after every write.
     async list({ stateId, districtId } = {}) {
+      const cacheable = !stateId && !districtId;
+      if (cacheable && basesListCache && basesListCache.expires > Date.now()) {
+        return basesListCache.data;
+      }
+
+      let result;
       if (isSupabaseEnabled) {
         try {
           let query = supabase.from('bases').select('*');
           if (stateId) query = query.eq('state_id', stateId);
           if (districtId) query = query.eq('district_id', districtId);
           const { data, error } = await query;
-          if (!error && data && data.length > 0) return data;
+          if (!error && data && data.length > 0) result = data;
         } catch (_) {}
       }
-      return localDb.bases.filter(b =>
-        (!stateId || b.state_id === stateId) &&
-        (!districtId || b.district_id === districtId)
-      );
+      if (!result) {
+        result = localDb.bases.filter(b =>
+          (!stateId || b.state_id === stateId) &&
+          (!districtId || b.district_id === districtId)
+        );
+      }
+
+      if (cacheable) basesListCache = { expires: Date.now() + BASES_LIST_CACHE_TTL_MS, data: result };
+      return result;
     },
     async get(id) {
       if (isSupabaseEnabled) {

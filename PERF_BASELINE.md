@@ -658,3 +658,69 @@ Supabase was first connected.
 
 Full 17-endpoint smoke test after the fix: all 200. Client lint/build
 unaffected (server-only change).
+
+---
+
+## Step 6 — Cache expensive database queries
+
+**Scope:** distinct from Step 5 (HTTP response caching). This targets one
+specific internal query — `db.bases.list({})`, the fully unfiltered call —
+which is invoked from inside several different route handlers via scope
+resolution, not from a single route.
+
+### Why this query specifically
+
+`db.bases.list({})` runs behind `requireAuth` via
+`resolveAllowedBaseIds`/`resolveAllowedStateIds` in `scopeResolver.js` —
+meaning it fires on nearly every authenticated request: `/api/drones`,
+`/api/incidents`, `/api/geo/*`, `/api/fleet/*`. Two more call sites
+(`surveillanceCoordinator.js`, `rl/environment.js`) also call it
+unfiltered. It is very likely the single most-executed query in the app.
+Bases have zero mutation routes anywhere (confirmed in Step 5's audit),
+so caching it carries no real staleness risk.
+
+### Why this is safe to cache globally (unlike `/bases` in Step 5)
+
+The crucial distinction: this caches the **raw, unfiltered** base list —
+identical for every caller — *before* any per-user scoping happens.
+Per-user filtering (`selectAllowedBases()` in `scopeResolver.js`) runs
+**downstream**, on the cached result, for each caller independently. This
+is the opposite shape of Step 5's `/api/geo/bases` HTTP route, which
+filters *before* responding — that's why that one had to be excluded and
+this one doesn't.
+
+### Implementation
+
+Cache lives inside `db.bases.list()` itself in `config/database.js` — a
+single `basesListCache` variable with a 5-minute TTL, applied only to the
+exact no-filter call shape (`list()` / `list({})`). Calls that pass
+`stateId`/`districtId` (the `/api/geo/bases` route) always hit the live
+query — a narrower, lower-traffic shape not worth a multi-key cache.
+
+### Verification
+
+The DB-call counter from Step 2 can't see this: it wraps the exported
+`bases.list()` function itself, which is still *called* once per request
+either way — caching happens *inside* the function body, invisibly to a
+wrapper at that layer. Wall-clock timing against live Supabase was also
+too noisy to use cleanly here — background simulator traffic contends for
+the same connection pool, and individual request latency varied from
+~270ms to over 800ms with no clean pattern. Reporting that honestly rather
+than cherry-picking a flattering number.
+
+The reliable proof: a temporary internal log (`BASESCACHE HIT`/`MISS`,
+removed immediately after) directly inside the cache check, observed
+across 13 calls fired by 8x `/api/drones` + 5x `/api/incidents`:
+
+```
+BASESCACHE MISS
+BASESCACHE HIT   (x12)
+```
+
+**13 calls to `db.bases.list({})`, 1 real Supabase query.** This is
+unambiguous: the mechanism works exactly as designed.
+
+Scoping correctness re-verified after caching the shared, unfiltered
+list: `goa.commander` still sees 5 drones, `national.commander` still
+sees 22 — confirming per-user filtering downstream of the cache is
+unaffected. Full 13-endpoint smoke test: all 200.

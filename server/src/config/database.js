@@ -338,6 +338,16 @@ if (isSupabaseEnabled) {
 
 const supabase = isSupabaseEnabled ? createClient(supabaseUrl, supabaseKey) : null;
 
+// Cached copy of the unfiltered bases.list() result. Bases have no mutation
+// route anywhere in the app; bases.list() below carries the safety contract.
+let basesListCache = null; // { expires: epoch ms, data: array } | null
+const BASES_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Mission and incident state-transition markers, kept in full regardless of any
+// `limit` passed to dispatchLogs.listForIncident(). Excludes 'control' and
+// 'snapshot', which repeat many times over a single mission.
+const DISPATCH_LOG_LIFECYCLE_ACTIONS = ['launch', 'arrival', 'return_to_base', 'abort', 'fleet_decision'];
+
 // Database Adapter Interface
 const db = {
   isSupabase: isSupabaseEnabled,
@@ -374,10 +384,21 @@ const db = {
     },
     async get(id) {
       if (isSupabaseEnabled) {
-        try {
-          const { data, error } = await supabase.from('states').select('*').eq('id', id).single();
-          if (!error) return data;
-        } catch (_) {}
+        // Two safe equality lookups (id, then code) — matches
+        // organisations.get() below. Every caller in this app (routes/geo,
+        // routes/airspace, routes/surveillance, routes/fleet, rl/environment)
+        // passes a human-readable code like 'GA' here, not a UUID. The
+        // previous single `.eq('id', id)` lookup could never match a code
+        // against the UUID primary key, silently fell through to the
+        // in-memory fallback below, and returned that fallback's randomly
+        // generated id — a *different* value on every process restart —
+        // while still returning the correct code/name/etc. fields, which is
+        // exactly what made the wrong id invisible until something filtered
+        // districts/bases/zones by it against the real database.
+        const byId = await supabase.from('states').select('*').eq('id', id).maybeSingle();
+        if (!byId.error && byId.data) return byId.data;
+        const byCode = await supabase.from('states').select('*').eq('code', id).maybeSingle();
+        if (!byCode.error && byCode.data) return byCode.data;
       }
       return localDb.states.find(s => s.id === id || s.code === id) || null;
     }
@@ -398,20 +419,42 @@ const db = {
   },
 
   bases: {
+    // The unfiltered call shape, list() / list({}), is cached for 5 minutes.
+    // scopeResolver.js calls it on nearly every authenticated request, as do
+    // surveillanceCoordinator.js and rl/environment.js, which makes it the most
+    // executed query in the app: roughly a 220ms Supabase round trip each time.
+    //
+    // Filtered calls are not cached and always hit the live query. routes/geo.js
+    // passes {stateId, districtId} for /bases.
+    //
+    // Safe because bases have no mutation route. If one is added it must set
+    // `basesListCache` to null, or this serves stale data for five minutes
+    // after every write.
     async list({ stateId, districtId } = {}) {
+      const cacheable = !stateId && !districtId;
+      if (cacheable && basesListCache && basesListCache.expires > Date.now()) {
+        return basesListCache.data;
+      }
+
+      let result;
       if (isSupabaseEnabled) {
         try {
           let query = supabase.from('bases').select('*');
           if (stateId) query = query.eq('state_id', stateId);
           if (districtId) query = query.eq('district_id', districtId);
           const { data, error } = await query;
-          if (!error && data && data.length > 0) return data;
+          if (!error && data && data.length > 0) result = data;
         } catch (_) {}
       }
-      return localDb.bases.filter(b =>
-        (!stateId || b.state_id === stateId) &&
-        (!districtId || b.district_id === districtId)
-      );
+      if (!result) {
+        result = localDb.bases.filter(b =>
+          (!stateId || b.state_id === stateId) &&
+          (!districtId || b.district_id === districtId)
+        );
+      }
+
+      if (cacheable) basesListCache = { expires: Date.now() + BASES_LIST_CACHE_TTL_MS, data: result };
+      return result;
     },
     async get(id) {
       if (isSupabaseEnabled) {
@@ -809,13 +852,41 @@ const db = {
       localDb.dispatch_logs.push(newLog);
       return [newLog];
     },
-    async listForIncident(incidentId) {
+    // Browser-facing routes pass an explicit `limit` to bound the response.
+    // One real incident returned 907 unbounded rows.
+    //
+    // `limit` defaults to null because services/simulatorService.js searches the
+    // full list for a 'launch' entry and for 'SAFETY AUTO-RETURN' and
+    // 'Controller override' notes to compute RL training signals. It passes no
+    // limit and always gets the true history.
+    //
+    // A plain "most recent N" is not safe here: one incident had 995 'control'
+    // entries burying its single 'launch' near the start, and rapidStore.js's
+    // tick() needs that entry for the flight duration display. Lifecycle actions
+    // are always kept in full; only the routine high-volume ones are capped.
+    async listForIncident(incidentId, limit = null) {
       if (isSupabaseEnabled) {
-        const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
-        if (error) throw error;
-        return data;
+        if (!limit) {
+          const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
+          if (error) throw error;
+          return data.reverse();
+        }
+        const [lifecycleRes, recentRes] = await Promise.all([
+          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).in('action', DISPATCH_LOG_LIFECYCLE_ACTIONS),
+          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false }).limit(limit)
+        ]);
+        if (lifecycleRes.error) throw lifecycleRes.error;
+        if (recentRes.error) throw recentRes.error;
+        const byId = new Map();
+        for (const row of [...lifecycleRes.data, ...recentRes.data]) byId.set(row.id, row);
+        return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
       }
-      return localDb.dispatch_logs.filter(l => l.incident_id === incidentId).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const all = localDb.dispatch_logs.filter(l => l.incident_id === incidentId);
+      if (!limit) return all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const byId = new Map();
+      for (const row of all.filter(l => DISPATCH_LOG_LIFECYCLE_ACTIONS.includes(l.action))) byId.set(row.id, row);
+      for (const row of [...all].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, limit)) byId.set(row.id, row);
+      return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
   },
 
@@ -849,13 +920,23 @@ const db = {
       localDb.snapshots.push(newSnap);
       return newSnap;
     },
-    async listForIncident(incidentId) {
+    // Same design as dispatchLogs.listForIncident() above. `limit` defaults to
+    // null because cameraManager.lastSnapshotHash() reads the last entry to
+    // extend the evidence hash chain; only pass a limit from a browser-facing
+    // route. One real incident returned 900 rows.
+    async listForIncident(incidentId, limit = null) {
       if (isSupabaseEnabled) {
-        const { data, error } = await supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
+        let query = supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
+        if (limit) query = query.limit(limit);
+        const { data, error } = await query;
         if (error) throw error;
-        return data;
+        return data.reverse();
       }
-      return localDb.snapshots.filter(s => s.incident_id === incidentId);
+      let result = localDb.snapshots
+        .filter(s => s.incident_id === incidentId)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      if (limit) result = result.slice(0, limit);
+      return result.reverse();
     }
   },
 
@@ -998,6 +1079,41 @@ const db = {
       }
       return localDb.controller_actions
         .filter(a => a.drone_id === droneId)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit);
+    },
+
+    /**
+     * Most recent controller actions across the whole fleet, newest first.
+     *
+     * Exists so routes/fleet.js's decision feed can issue ONE query instead
+     * of one listForDrone() per drone (a 1+N: 23 calls for a 22-drone fleet,
+     * each a separate PostgREST round trip under Supabase). Sorting and
+     * truncation happen in the database rather than in Node, so only `limit`
+     * rows cross the wire instead of (drones x perDroneLimit) rows.
+     */
+    async listRecent(limit = 100, droneIds = null) {
+      // droneIds restricts the feed to a caller's in-scope drones. Passing
+      // null means no restriction - callers that have already established
+      // the caller may see the whole fleet should pass null rather than a
+      // list of every id, to keep the PostgREST query string short.
+      if (droneIds && droneIds.length === 0) return [];
+
+      if (isSupabaseEnabled) {
+        try {
+          let query = supabase
+            .from('controller_actions')
+            .select('*');
+          if (droneIds) query = query.in('drone_id', droneIds);
+          const { data, error } = await query
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+          if (!error) return data;
+        } catch (_) {}
+      }
+      const allowed = droneIds ? new Set(droneIds) : null;
+      return localDb.controller_actions
+        .filter(a => !allowed || allowed.has(a.drone_id))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
         .slice(0, limit);
     },
@@ -1233,9 +1349,26 @@ async function seedOrganisationsAndUsersInSupabase() {
     if (fetchOrgError) throw fetchOrgError;
     const orgIdByCode = Object.fromEntries(liveOrgs.map(o => [o.code, o.id]));
 
+    // Live states may not exist yet on a first boot; when they do, scope_id
+    // must be remapped onto them. seedUsers carry scope_id values from this
+    // process's in-memory seed (fresh UUIDs each boot), which match nothing
+    // persisted - writing those verbatim is what locked STATE_COMMANDERs out
+    // of every resource. reconcileUserScopesInSupabase() covers the first-boot
+    // case, after the geography seed has created the states.
+    const { data: liveStates } = await supabase.from('states').select('id, code');
+    const liveStateIdByCode = Object.fromEntries((liveStates || []).map(s => [s.code, s.id]));
+    const seedStateCodeById = Object.fromEntries(seedStates.map(s => [s.id, s.code]));
+
     const userPayload = seedUsers.map(({ id, organisation_id, ...rest }) => {
       const code = seedOrganisations.find(o => o.id === organisation_id)?.code;
-      return { ...rest, organisation_id: orgIdByCode[code] };
+      const mapped = { ...rest, organisation_id: orgIdByCode[code] };
+
+      if (mapped.scope_type === 'state' && mapped.scope_id) {
+        const stateCode = seedStateCodeById[mapped.scope_id];
+        const liveId = stateCode ? liveStateIdByCode[stateCode] : null;
+        if (liveId) mapped.scope_id = liveId;
+      }
+      return mapped;
     });
     const { error: userError } = await supabase.from('users').upsert(userPayload, { onConflict: 'username' });
     if (userError) throw userError;
@@ -1243,6 +1376,59 @@ async function seedOrganisationsAndUsersInSupabase() {
     console.log('?? Auth: Organisations + demo personnel accounts synced to Supabase.');
   } catch (err) {
     console.error('??  Failed to sync organisations/users into Supabase � auth may fail:', err.message);
+  }
+}
+
+/**
+ * Remaps user scope_id values onto the live Supabase state rows.
+ *
+ * Seeded users carry scope_ids generated fresh on each boot, which match no
+ * persisted state row. Left unrepaired, resolveAllowedBaseIds returns nothing
+ * and a state-scoped commander sees an empty fleet. Runs after the geography
+ * seed, and only writes rows whose scope_id is actually wrong.
+ */
+async function reconcileUserScopesInSupabase() {
+  try {
+    const { data: liveStates, error: stateErr } = await supabase.from('states').select('id, code');
+    if (stateErr) throw stateErr;
+    if (!liveStates || liveStates.length === 0) return;
+
+    const liveStateIdByCode = Object.fromEntries(liveStates.map(s => [s.code, s.id]));
+    const seedStateCodeById = Object.fromEntries(seedStates.map(s => [s.id, s.code]));
+
+    const { data: liveUsers, error: userErr } = await supabase
+      .from('users')
+      .select('id, username, scope_type, scope_id');
+    if (userErr) throw userErr;
+
+    // Only 'state' scopes are seeded today. A 'district' or 'base' scoped user
+    // would need the same code-based remapping against its own table.
+    const stale = (liveUsers || []).filter(u => {
+      if (u.scope_type !== 'state') return false;
+      const seedUser = seedUsers.find(su => su.username === u.username);
+      if (!seedUser) return false;
+      const code = seedStateCodeById[seedUser.scope_id];
+      const correctId = code ? liveStateIdByCode[code] : null;
+      return correctId && correctId !== u.scope_id;
+    });
+
+    // Bounded by the number of state-scoped demo users (2), and a no-op on
+    // every boot after the first repair, so a loop is acceptable here.
+    for (const u of stale) {
+      const code = seedStateCodeById[seedUsers.find(su => su.username === u.username).scope_id];
+      const { error } = await supabase
+        .from('users')
+        .update({ scope_id: liveStateIdByCode[code] })
+        .eq('id', u.id);
+      if (error) throw error;
+      console.log(`   Auth: repaired scope_id for ${u.username} -> state ${code}`);
+    }
+
+    if (stale.length > 0) {
+      console.log(`Auth: repaired ${stale.length} stale user scope_id value(s).`);
+    }
+  } catch (err) {
+    console.error('Failed to reconcile user scopes in Supabase:', err.message);
   }
 }
 
@@ -1341,7 +1527,9 @@ async function seedGeographyAndFleetToSupabase() {
 }
 
 if (isSupabaseEnabled) {
-  seedOrganisationsAndUsersInSupabase().then(() => seedGeographyAndFleetToSupabase());
+  seedOrganisationsAndUsersInSupabase()
+    .then(() => seedGeographyAndFleetToSupabase())
+    .then(() => reconcileUserScopesInSupabase());
 }
 
 module.exports = db;

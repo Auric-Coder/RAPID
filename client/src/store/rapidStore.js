@@ -5,9 +5,14 @@
  */
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { haversineDistance } from '../config/geoConfig';
 
 const ACTIVE_STATUSES = ['Dispatched', 'En Route', 'On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Awaiting Controller', 'Returning', 'Patrolling'];
+
+// Dragging the speaker-volume slider fires onChange on every pixel, and each
+// event used to send its own PATCH. Only the network write is debounced: the
+// local `speakerVol` state, and so the slider position and the "%N" label,
+// still updates on every event, so dragging feels identical.
+let speakerVolPersistTimer = null;
 
 const useRapidStore = create(
   immer((set, get) => ({
@@ -337,11 +342,16 @@ const useRapidStore = create(
       set(s => { s.pttLog = [{ time: new Date().toLocaleTimeString([], { hour12: false }), event: 'TRANSMISSION ENDED' }, ...s.pttLog.slice(0, 19)]; });
     },
 
-    updateCommunicationSettings: async (settings) => {
-      const selectedDrone = get().getSelectedDrone();
-      if (!selectedDrone) return;
+    // `targetDroneId` lets a debounced caller (setSpeakerVol below) pin the
+    // request to the drone that was actually selected when the user made
+    // the change, instead of re-reading "whichever drone is selected now" —
+    // which, once the write is delayed, might be a different drone if the
+    // operator switched selection during the debounce window.
+    updateCommunicationSettings: async (settings, targetDroneId) => {
+      const droneId = targetDroneId || get().getSelectedDrone()?.id;
+      if (!droneId) return;
       try {
-        await fetch(`/api/communication/${selectedDrone.id}/settings`, {
+        await fetch(`/api/communication/${droneId}/settings`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(settings)
         });
@@ -350,7 +360,19 @@ const useRapidStore = create(
 
     setMicActive: (v) => { set({ micActive: v }); get().updateCommunicationSettings({ micActive: v }); },
     setSpeakerActive: (v) => { set({ speakerActive: v }); get().updateCommunicationSettings({ speakerActive: v }); },
-    setSpeakerVol: (v) => { set({ speakerVol: v }); get().updateCommunicationSettings({ speakerVolume: v }); },
+    setSpeakerVol: (v) => {
+      set({ speakerVol: v });
+      // Capture which drone this drag was actually for, synchronously —
+      // if the operator switches to a different drone within the 400ms
+      // debounce window, the write must still land on the one the slider
+      // was pointed at, not "whichever drone happens to be selected when
+      // the timer fires."
+      const targetDroneId = get().getSelectedDrone()?.id;
+      clearTimeout(speakerVolPersistTimer);
+      speakerVolPersistTimer = setTimeout(() => {
+        get().updateCommunicationSettings({ speakerVolume: v }, targetDroneId);
+      }, 400);
+    },
 
     // ── Demo Emergency ──
     generateSimulatedEmergency: async () => {
@@ -535,7 +557,6 @@ const useRapidStore = create(
 
     // ── WebSocket Handlers ──
     handleWsMessage: (msg) => {
-      const state = get();
       if (msg.type === 'drone_update') {
         set(s => {
           const idx = s.drones.findIndex(d => d.id === msg.payload.id);

@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
@@ -47,6 +48,10 @@ app.use(helmet({
     }
   }
 }));
+
+// Compresses JSON API responses and the static client bundle. The default
+// 1 KB threshold is kept, so tiny responses skip the gzip overhead.
+app.use(compression());
 
 // CORS allowlist; override with CORS_ORIGINS (comma-separated) for a non-default deploy.
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -124,9 +129,25 @@ app.use('/api/agents', agentsRoutes);
 // Skipped in local dev (no dist/ exists; Vite dev server + proxy handles the client).
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
-  // Anything not under /api falls through to the SPA shell.
+  // Files under assets/ carry a Vite content hash, so the filename is the
+  // cache key and they can be cached indefinitely. index.html cannot: it
+  // names the current build's hashed files. `index: false` keeps
+  // express.static from serving index.html with its own headers before the
+  // no-cache route below runs.
+  app.use(express.static(clientDistPath, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith(`${path.sep}index.html`)) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    }
+  }));
+  // Anything not under /api falls through to the SPA shell, always no-cache
+  // so a returning visitor never loads an old deploy's asset filenames.
   app.get(/^(?!\/api).*/, (req, res) => {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }

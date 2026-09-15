@@ -1429,3 +1429,39 @@ purpose: the app's own CSS, 154ms - confirming the analysis was correct
 rather than incomplete.
 
 Full endpoint smoke test: all 200.
+
+---
+
+## Step 17 — Verify production JS/CSS minification: confirmed, no changes needed
+
+Verified directly against the built output rather than trusting Vite's
+documented defaults.
+
+### Evidence
+
+1. **No `build.minify` override** in `vite.config.js` — Vite's defaults
+   apply fully (esbuild-based minification for both JS and CSS).
+2. **Direct inspection of the built files:**
+   - Main JS chunk: 206,231 bytes compressed into **138 lines** total —
+     short identifiers, no whitespace formatting, statements packed
+     together. Zero unminified tells found (no full-width comments, no
+     descriptively-named handler functions).
+   - Main CSS file: 34,959 bytes on **one line** — no whitespace between
+     rules, custom-property names retained only where Tailwind needs them
+     for runtime theming, everything else compacted.
+3. **No source maps shipped** in `dist/` — confirmed zero `.map` files,
+   so the original, unminified source isn't incidentally exposed
+   alongside the minified bundle.
+4. **Production React build confirmed in use, not development.** Grepped
+   for React's dev-only warnings (`Each child in a list...`, `Warning:
+   ReactDOM.render`) - zero matches. The one hit for a
+   React-testing-utility guard (`act(...) is not supported in production
+   builds of React`) is React's own intentional production-build error
+   message, present in React's official `react-dom.production.min.js`
+   too - confirming the production bundle is genuinely active, not a
+   dev-mode leak.
+
+### Conclusion
+
+No configuration or code change made. Minification was already correctly
+configured and verified working before this pass began.

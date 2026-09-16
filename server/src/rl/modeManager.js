@@ -1,19 +1,16 @@
 /**
- * RAPID RL — Mode Manager (Phase 2, trainable policy added Phase 7)
+ * RAPID RL — Mode Manager
  *
- * LIVE / TRAINING / EVALUATION state machine with the safety interlock
- * from the v1.3 architecture (Section 11.3): the production (LIVE)
- * policy is frozen — LIVE always maps to the untouched heuristicPolicy,
- * never to anything trainable — and nothing can modify a policy's
- * weights outside TRAINING mode.
+ * LIVE / TRAINING / EVALUATION state machine with a safety interlock:
+ * the production (LIVE) policy is frozen — LIVE always maps to the
+ * untouched heuristicPolicy, never to anything trainable — and nothing
+ * can modify a policy's weights outside TRAINING mode.
  *
- * Phase 2 left TRAINING/EVALUATION permanently refused because no
- * trainable/candidate policy existed yet. Phase 7 resolves that: both
- * modes now run neuralPolicy (a real TensorFlow.js model — see
- * policies/neuralPolicy.js). TRAINING additionally drives a background
- * loop that trains it from the experience buffer; EVALUATION runs it
- * read-only for live comparison against the frozen heuristic (see
- * environment.js's shadowComparison).
+ * Both TRAINING and EVALUATION run neuralPolicy (a real TensorFlow.js
+ * model — see policies/neuralPolicy.js). TRAINING additionally drives a
+ * background loop that trains it from the experience buffer; EVALUATION
+ * runs it read-only for live comparison against the frozen heuristic
+ * (see environment.js's shadowComparison).
  */
 const heuristicPolicy = require('./policies/heuristicPolicy');
 const neuralPolicy = require('./policies/neuralPolicy');
@@ -62,8 +59,8 @@ function getHistory() {
   return [...modeHistory];
 }
 
-// Background training loop (Phase 7): ticks every 8s but is a cheap
-// no-op unless the safety interlock is actually open (mode === TRAINING).
+// Background training loop: ticks every 8s but is a cheap no-op unless
+// the safety interlock is actually open (mode === TRAINING).
 // Flipping back to LIVE/EVALUATION stops training on the very next tick —
 // `canModifyPolicy()` is re-checked every time, not cached at loop start.
 const TRAINING_TICK_MS = 8000;

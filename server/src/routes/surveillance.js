@@ -4,7 +4,7 @@ const db = require('../config/database');
 const surveillanceCoordinator = require('../services/surveillance/surveillanceCoordinator');
 
 /**
- * RAPID Surveillance Routes — Phase 5
+ * RAPID Surveillance Routes
  * Mounted at /api/surveillance. See services/surveillance/.
  */
 

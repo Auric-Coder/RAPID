@@ -1,11 +1,10 @@
 /**
- * RAPID Airspace — Conflict Detector (Phase 5)
+ * RAPID Airspace — Conflict Detector
  *
  * Restriction-level-aware layer on top of rl/constraintValidator.js's
  * geometry primitives (point-in-polygon, route sampling) — reused
  * rather than duplicated, so there's exactly one implementation of the
- * actual math. This module adds the "what does a hit MEAN" semantics
- * from architecture Section 4.1:
+ * actual math. This module adds the "what does a hit MEAN" semantics:
  *   absolute    -> hard block, no override
  *   conditional -> blocked unless a clearance workflow exists (not
  *                  modelled yet — treated as blocked, same as absolute,

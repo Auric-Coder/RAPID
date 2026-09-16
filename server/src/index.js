@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
@@ -22,6 +23,7 @@ const communicationRoutes = require('./routes/communication');
 const airspaceRoutes = require('./routes/airspace');
 const surveillanceRoutes = require('./routes/surveillance');
 const securityRoutes = require('./routes/security');
+const agentsRoutes = require('./routes/agents');
 const simulatorService = require('./services/simulatorService');
 const websocketService = require('./services/websocketService');
 const { requireAuth } = require('./middleware/auth');
@@ -33,9 +35,7 @@ const PORT = process.env.PORT || 5000;
 // and req.ip accurately read the X-Forwarded-For client IP.
 app.set('trust proxy', 1);
 
-// Phase 8: standard HTTP security headers. When serving the built frontend
-// bundle in production, configure CSP to allow map tiles (OpenStreetMap/Carto)
-// and inline styling used by Tailwind/Leaflet.
+// CSP allows map tiles (OpenStreetMap/Carto) and inline styling used by Leaflet.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -49,8 +49,11 @@ app.use(helmet({
   }
 }));
 
-// Enable CORS for the frontend. Phase 8 tightens this to an explicit allowlist;
-// override with CORS_ORIGINS (comma-separated) for a non-default deploy.
+// Compresses JSON API responses and the static client bundle. The default
+// 1 KB threshold is kept, so tiny responses skip the gzip overhead.
+app.use(compression());
+
+// CORS allowlist; override with CORS_ORIGINS (comma-separated) for a non-default deploy.
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -103,8 +106,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/v1/citizen', citizenRoutes);
 
-// Phase 6: everything else under /api/* now requires a logged-in
-// session (audit finding C2 — "zero access control" — addressed here).
+// Everything under /api/* requires a logged-in session.
 app.use('/api', requireAuth);
 
 // Bind API route structures
@@ -121,31 +123,37 @@ app.use('/api/communication', communicationRoutes);
 app.use('/api/airspace', airspaceRoutes);
 app.use('/api/surveillance', surveillanceRoutes);
 app.use('/api/security', securityRoutes);
+app.use('/api/agents', agentsRoutes);
 
-// Cloud deployment: serve the built client from this same Express service
-// when a production build is present (client/dist — built by `npm run
-// build` in client/). Keeps client + API on one origin in production, so
-// the Phase 6 httpOnly session cookie stays same-origin with zero auth
-// code changes — no CORS/SameSite=None complexity from splitting them
-// across two domains. Local dev is unaffected: no dist/ exists, so this
-// block is skipped and Vite's dev server + proxy handles the client.
+// Serves the built client from the same Express process in production.
+// Skipped in local dev (no dist/ exists; Vite dev server + proxy handles the client).
 const clientDistPath = path.join(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {
-  app.use(express.static(clientDistPath));
-  // Anything not under /api falls through to the SPA shell so client-side
-  // routing (React Router) handles it.
+  // Files under assets/ carry a Vite content hash, so the filename is the
+  // cache key and they can be cached indefinitely. index.html cannot: it
+  // names the current build's hashed files. `index: false` keeps
+  // express.static from serving index.html with its own headers before the
+  // no-cache route below runs.
+  app.use(express.static(clientDistPath, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith(`${path.sep}index.html`)) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    }
+  }));
+  // Anything not under /api falls through to the SPA shell, always no-cache
+  // so a returning visitor never loads an old deploy's asset filenames.
   app.get(/^(?!\/api).*/, (req, res) => {
+    res.set('Cache-Control', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }
 
-// Phase 8: generic error handler — without this, Express's default
-// dev-mode handler returns a full stack trace (absolute file paths,
-// framework internals) to the client on any unhandled error, which is
-// exactly what this hardening phase exists to stop. Discovered via the
-// CORS rejection above, which threw before any route body ran; applies
-// to any other unhandled error the same way. Must be registered last —
-// Express only routes to a 4-arg handler placed after everything else.
+// Generic error handler — prevents Express's dev handler from returning
+// stack traces to the client. Must be registered last.
 app.use((err, req, res, _next) => {
   console.error('Unhandled error:', err);
   if (err.message && err.message.startsWith('CORS:')) {
@@ -163,15 +171,14 @@ const server = http.createServer(app);
 websocketService.init(server);
 
 server.listen(PORT, () => {
-  console.log(`🚀 RAPID Command Server listening on port ${PORT}...`);
+  console.log(`RAPID Command Server listening on port ${PORT}.`);
 });
 
-// Graceful shut down hook to clear loops
 process.on('SIGINT', () => {
-  console.log('\n🛑 Shutdown signal received.');
+  console.log('Shutdown signal received.');
   simulatorService.stop();
   server.close(() => {
-    console.log('💤 Server connection terminated. Clean exit.');
+    console.log('Server stopped. Clean exit.');
     process.exit(0);
   });
 });

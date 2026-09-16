@@ -1,12 +1,10 @@
 /**
- * RAPID Security — Audit Logger (Phase 8)
+ * RAPID Security — Audit Logger
  *
  * SHA-256 hash-chained log of security-relevant events: login attempts,
  * airspace zone writes, RL mode switches, and unauthorized (role-gated)
  * attempts. Reuses camera/evidenceHasher.js's chaining logic unchanged
- * (R19 — code preservation: the hashing/verification math Phase 4 already
- * proved out for evidence integrity applies identically here) rather than
- * re-deriving a second hash-chain implementation.
+ * rather than re-deriving a second hash-chain implementation.
  *
  * One global chain (not per-incident like evidence) — every event links
  * to the previous security event regardless of type, so the log's own
@@ -25,7 +23,9 @@ const EVENTS = Object.freeze({
   ZONE_UPDATED: 'zone_updated',
   ZONE_DELETED: 'zone_deleted',
   RL_MODE_CHANGED: 'rl_mode_changed',
-  UNAUTHORIZED_ATTEMPT: 'unauthorized_attempt'
+  UNAUTHORIZED_ATTEMPT: 'unauthorized_attempt',
+  AI_BRIEFING_GENERATED: 'ai_briefing_generated',
+  AI_DISPATCH_CONFIRMED: 'ai_dispatch_confirmed'
 });
 
 /**

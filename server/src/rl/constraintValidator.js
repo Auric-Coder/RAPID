@@ -1,5 +1,5 @@
 /**
- * RAPID RL — Safety / Constraint Validator (Phase 2)
+ * RAPID RL — Safety / Constraint Validator
  *
  * These checks sit OUTSIDE any policy (heuristic today, learned later).
  * No policy — human-designed or trained — can recommend around them; the
@@ -7,10 +7,10 @@
  * thing that decides whether an action is even offered as a candidate.
  *
  * Airspace geometry here is intentionally simple (point-in-polygon +
- * straight-line sampling). Full zone types, temporal validity and
- * clearance workflows are Phase 5 (Airspace Management) scope — this is
- * just enough to make "cannot route through a no-fly zone" a real,
- * enforced constraint rather than a documented intention.
+ * straight-line sampling) — just enough to make "cannot route through a
+ * no-fly zone" a real, enforced constraint rather than a documented
+ * intention. Full zone types, temporal validity and clearance workflows
+ * live in Airspace Management.
  */
 
 const energyCfg = require('../config/energyConfig');
@@ -41,7 +41,7 @@ function isPointInPolygon(lat, lng, polygon) {
 /**
  * Approximates route-vs-polygon intersection by sampling points along the
  * straight-line path. Sufficient for the small demo NFZ polygons in this
- * prototype; a proper segment-polygon intersection is Phase 5 scope.
+ * prototype; a proper segment-polygon intersection is future work.
  */
 function routeIntersectsNoFlyZone(fromLat, fromLng, toLat, toLng, noFlyZones) {
   const SAMPLES = 20;

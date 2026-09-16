@@ -1,6 +1,5 @@
 /**
  * RAPID — Centralized Energy Model Configuration
- * Command 3: Intelligent Fleet Dispatch & Battery Management
  *
  * ALL energy constants must be imported from here.
  * DO NOT scatter energy values across route/service files.

@@ -1,18 +1,17 @@
 /**
- * RAPID RL — Neural Policy (Phase 7)
+ * RAPID RL — Neural Policy
  *
- * Resolves the Phase 2 deferral: a real, trainable TensorFlow.js model
- * (pure-JS CPU backend — no native build step, matches this project's
- * existing avoid-native-deps pattern for bcryptjs on Windows).
+ * A real, trainable TensorFlow.js model (pure-JS CPU backend — no
+ * native build step, matches this project's existing avoid-native-deps
+ * pattern for bcryptjs on Windows).
  *
  * This is a learned *scorer*, not a full re-implementation of dispatch
  * logic: candidate discovery, eligibility, and energy-feasibility all
- * still come from the untouched fleetDecisionEngine.evaluateFleet() (R19
- * — code preservation), exactly like heuristicPolicy does. The only
- * thing this policy does differently is rank the already-feasible
- * candidates by a learned Q-value instead of the fixed weighted-sum
- * score, so it can never propose a candidate the safety/energy checks
- * would have rejected.
+ * still come from the untouched fleetDecisionEngine.evaluateFleet(),
+ * exactly like heuristicPolicy does. The only thing this policy does
+ * differently is rank the already-feasible candidates by a learned
+ * Q-value instead of the fixed weighted-sum score, so it can never
+ * propose a candidate the safety/energy checks would have rejected.
  *
  * Model weights live in memory only — consistent with the rest of this
  * prototype (in-memory DB, JWT secret regenerated per process): training

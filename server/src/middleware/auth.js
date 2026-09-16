@@ -1,24 +1,11 @@
-/**
- * RAPID Auth Middleware (Phase 6)
- *
- * `requireAuth` reads the session from an httpOnly cookie, not an
- * Authorization header — deliberately, so none of the client's
- * existing ~50+ `fetch()` calls needed to change to send a token; the
- * browser attaches same-origin cookies automatically. See
- * config/authConfig.js and routes/auth.js.
- */
 const { verifyToken } = require('../services/auth/authService');
 const { SESSION_COOKIE_NAME } = require('../config/authConfig');
 const securityAuditLogger = require('../services/security/securityAuditLogger');
 
 function isPublicCitizenEndpoint(req) {
-  // Citizen web emergency submission: POST /api/incidents
   if (req.method === 'POST' && req.path === '/incidents') return true;
-  // Citizen incident tracking: GET /api/incidents/:id
   if (req.method === 'GET' && /^\/incidents\/[^/]+$/.test(req.path)) return true;
-  // Citizen incident log trail: GET /api/incidents/:id/logs
   if (req.method === 'GET' && /^\/incidents\/[^/]+\/logs$/.test(req.path)) return true;
-  // Citizen tracking assigned drone telemetry: GET /api/drones/:id
   if (req.method === 'GET' && /^\/drones\/[^/]+$/.test(req.path)) return true;
   return false;
 }

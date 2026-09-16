@@ -1,7 +1,7 @@
 /**
- * RAPID RL — Action Space (Phase 2, PATROL/HANDOFF implemented Phase 5)
+ * RAPID RL — Action Space
  *
- * The 9-action space from the v1.3 architecture (Section 11.2).
+ * The 9-action space for the RL dispatch policy.
  */
 
 const constraintValidator = require('./constraintValidator');
@@ -18,9 +18,9 @@ const ACTIONS = Object.freeze({
   NO_ACTION: 'NO_ACTION'
 });
 
-// Nothing left permanently unimplemented as of Phase 5 — kept as an
-// empty set (rather than removed) so future actions have an obvious
-// place to be masked off while they're being built.
+// Nothing left permanently unimplemented — kept as an empty set (rather
+// than removed) so future actions have an obvious place to be masked
+// off while they're being built.
 const NOT_YET_IMPLEMENTED = new Set([]);
 
 const TRACKABLE_STATUSES = ['On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target'];

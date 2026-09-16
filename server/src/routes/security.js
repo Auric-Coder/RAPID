@@ -5,7 +5,7 @@ const securityAuditLogger = require('../services/security/securityAuditLogger');
 const { requireRole } = require('../middleware/auth');
 
 /**
- * RAPID Security Routes — Phase 8
+ * RAPID Security Routes
  *
  * Read surface for the hash-chained security audit log (login attempts,
  * airspace zone writes, RL mode switches, unauthorized role-gated

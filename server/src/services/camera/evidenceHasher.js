@@ -1,11 +1,10 @@
 /**
- * RAPID Camera — Evidence Hasher (Phase 4)
+ * RAPID Camera — Evidence Hasher
  *
  * SHA-256 hash chain for evidence records (snapshots, mission
- * recordings), per architecture Section 8.1's "STORE -> HASH" step.
- * Each new evidence item for a given incident links to the previous
- * one's hash; deleting, reordering, or altering an entry after the
- * fact breaks the chain, which is what makes it tamper-evident.
+ * recordings). Each new evidence item for a given incident links to
+ * the previous one's hash; deleting, reordering, or altering an entry
+ * after the fact breaks the chain, which is what makes it tamper-evident.
  *
  * The exact JSON string that was hashed is stored alongside the hash
  * (`hash_payload`) specifically so verification never has to guess at

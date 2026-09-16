@@ -17,12 +17,11 @@ const { requireRole } = require('../middleware/auth');
 const DISPATCH_ROLES = ['NATIONAL_COMMANDER', 'STATE_COMMANDER', 'DISTRICT_COMMANDER', 'BASE_COMMANDER', 'DISPATCHER', 'OPERATOR'];
 
 /**
- * RAPID Fleet Intelligence Routes — Command 3
+ * RAPID Fleet Intelligence Routes
  *
  * Provides fleet evaluation, energy status, dispatch decisions,
  * and controller override logging.
  *
- * LABEL: "RAPID Fleet Decision Engine"
  * This is deterministic decision-support, NOT reinforcement learning.
  */
 
@@ -148,10 +147,10 @@ router.post('/override', requireRole(...DISPATCH_ROLES), async (req, res) => {
       return res.status(400).json({ error: 'Selected Rakshak not found in fleet evaluation.' });
     }
 
-    // Phase 5: airspace is a hard constraint (absolute/conditional
-    // zones) — unlike the battery check below, no force flag can
-    // bypass a blocked route. Zones come from db.airspaceZones (Phase
-    // 5's live source of truth), not static config.
+    // Airspace is a hard constraint (absolute/conditional zones) —
+    // unlike the battery check below, no force flag can bypass a
+    // blocked route. Zones come from db.airspaceZones (the live
+    // source of truth), not static config.
     const droneStateCode = await environment.resolveStateCodeForBase(selectedDrone.base_id);
     const droneState = droneStateCode ? await db.states.get(droneStateCode) : null;
     const droneZones = droneState ? await db.airspaceZones.list({ stateId: droneState.id, activeOnly: true }) : [];
@@ -294,8 +293,8 @@ router.post('/reassign', requireRole(...DISPATCH_ROLES), async (req, res) => {
     });
     websocketService.broadcastIncidentUpdate(reassignedIncident);
 
-    // Phase 2: the drone's original mission never reached a clean outcome
-    // (it was redirected mid-flight) — this replaces that pending tuple
+    // The drone's original mission never reached a clean outcome (it
+    // was redirected mid-flight) — this replaces that pending tuple
     // with a fresh one for the new mission rather than trying to salvage it.
     await environment.beginExperience(droneId, { incidentId: newIncidentId, action: 'REASSIGN' });
 
@@ -337,18 +336,32 @@ router.post('/reassign', requireRole(...DISPATCH_ROLES), async (req, res) => {
  */
 router.get('/decisions', async (req, res) => {
   try {
-    const drones = await db.drones.list();
-    const allActions = [];
+    // Scope first: this feed previously returned every drone's controller
+    // actions to any authenticated caller, so a user from another
+    // organisation (e.g. AVIATION_CONTROL, which owns no drones) could read
+    // POLICE activity. Restrict it the same way /api/drones does.
+    const [drones, allowedBaseIds] = await Promise.all([
+      db.drones.list(),
+      resolveAllowedBaseIds(req.user)
+    ]);
+    const allowedBases = new Set(allowedBaseIds);
+    const visibleDrones = drones.filter(d => allowedBases.has(d.base_id));
 
-    for (const drone of drones) {
-      const actions = await db.controllerActions.listForDrone(drone.id, 20);
-      allActions.push(...actions);
-    }
+    if (visibleDrones.length === 0) return res.json([]);
 
-    // Sort by timestamp descending
-    allActions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    // Pass null when the caller can see the entire fleet, so the query stays
+    // unfiltered rather than carrying an `in` list of every drone id.
+    const droneIds = visibleDrones.length === drones.length
+      ? null
+      : visibleDrones.map(d => d.id);
 
-    res.json(allActions.slice(0, 100));
+    // One query for the feed. This previously looped over every drone issuing
+    // listForDrone() each time (1+N: 23 database calls for a 22-drone fleet),
+    // fetched up to drones x 20 rows, then discarded all but 100.
+    // listRecent() lets the database do the filtering, ordering and truncation.
+    const recentActions = await db.controllerActions.listRecent(100, droneIds);
+
+    res.json(recentActions);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

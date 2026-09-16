@@ -3,30 +3,13 @@ const router = express.Router();
 const db = require('../config/database');
 const { dispatchService } = require('../services/dispatchService');
 const websocketService = require('../services/websocketService');
-const { resolveAllowedStateIds } = require('../services/auth/scopeResolver');
-const { OPERATING_AREAS } = require('../config/geoConfig');
-
-// Incidents don't carry a state_id — they're scoped by whether their
-// coordinates fall inside one of the caller's allowed states' bounds.
-async function boundsForAllowedStates(user) {
-  const stateIds = await resolveAllowedStateIds(user);
-  const states = await Promise.all(stateIds.map(id => db.states.get(id)));
-  return states
-    .filter(Boolean)
-    .map(s => OPERATING_AREAS.find(a => a.stateCode === s.code))
-    .filter(Boolean)
-    .map(a => a.bounds);
-}
-
-function isWithinAnyBounds(lat, lng, boundsList) {
-  return boundsList.some(b => lat >= b.south && lat <= b.north && lng >= b.west && lng <= b.east);
-}
+const { resolveAllowedIncidentBounds, isWithinAnyBounds } = require('../services/auth/scopeResolver');
 
 // GET /api/incidents - List incidents within the caller's organisation + scope
 router.get('/', async (req, res) => {
   try {
     const list = await db.incidents.list();
-    const boundsList = await boundsForAllowedStates(req.user);
+    const boundsList = await resolveAllowedIncidentBounds(req.user);
     res.json(list.filter(i => isWithinAnyBounds(i.latitude, i.longitude, boundsList)));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -137,20 +120,22 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// GET /api/incidents/:id/logs - Get log trails
+// GET /api/incidents/:id/logs?limit=200 - Get log trails
 router.get('/:id/logs', async (req, res) => {
   try {
-    const logs = await db.dispatchLogs.listForIncident(req.params.id);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+    const logs = await db.dispatchLogs.listForIncident(req.params.id, limit);
     res.json(logs);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/incidents/:id/snapshots - Get captured evidence snapshots
+// GET /api/incidents/:id/snapshots?limit=200 - Get captured evidence snapshots
 router.get('/:id/snapshots', async (req, res) => {
   try {
-    const snapshots = await db.snapshots.listForIncident(req.params.id);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 200));
+    const snapshots = await db.snapshots.listForIncident(req.params.id, limit);
     res.json(snapshots);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,8 +1,7 @@
 /**
- * RAPID Communication Service (Phase 4)
+ * RAPID Communication Service
  *
- * Formalizes two-way PTT communication as server-side state, per
- * architecture Section 9.2's CommunicationSession model — previously
+ * Formalizes two-way PTT communication as server-side state — previously
  * this lived only in the Dashboard's Zustand store (mic/speaker/volume
  * reset on every page reload, and had no server audit trail beyond a
  * generic controller-action log entry).

@@ -3,7 +3,7 @@ const router = express.Router();
 const communicationService = require('../services/communication/communicationService');
 
 /**
- * RAPID Communication Routes — Phase 4
+ * RAPID Communication Routes
  * Mounted at /api/communication. See services/communication/communicationService.js.
  */
 

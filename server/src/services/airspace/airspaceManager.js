@@ -1,5 +1,5 @@
 /**
- * RAPID Airspace — Airspace Manager (Phase 5)
+ * RAPID Airspace — Airspace Manager
  *
  * Thin CRUD + lookup wrapper over db.airspaceZones, plus the one
  * helper every caller actually needs: "which zones apply to this

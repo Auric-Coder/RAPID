@@ -1,15 +1,14 @@
 /**
- * RAPID RL — Policy Interface (Phase 2)
+ * RAPID RL — Policy Interface
  *
  * Contract every dispatch policy must implement. A "policy" answers one
  * question: given an incident, which Rakshak (if any) should respond?
  *
  * Implementations:
  *   - heuristicPolicy — wraps the existing fleetDecisionEngine unchanged.
- *     This is the only policy that runs live today.
- *   - a future trained policy — not implemented in Phase 2 by design
- *     (see architecture doc open question #1: the neural network is
- *     deliberately deferred until real experience data exists).
+ *     This is the only policy that runs in LIVE mode.
+ *   - neuralPolicy — a trainable TensorFlow.js model used in TRAINING
+ *     and EVALUATION modes.
  */
 class PolicyInterface {
   // eslint-disable-next-line class-methods-use-this

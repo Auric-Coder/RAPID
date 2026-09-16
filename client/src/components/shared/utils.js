@@ -86,6 +86,8 @@ export const incidentIcon = (severity) => {
     html: `<div class="flex items-center justify-center"><div class="h-5 w-5 ${fill} ${shape} border-2 border-white shadow-lg flex items-center justify-center"><span class="text-[9px] font-extrabold text-white">!</span></div></div>`,
     className: 'custom-incident-icon', iconSize: [22, 22]
   });
+  incidentIconCache.set(key, icon);
+  return icon;
 };
 
 export const droneIcon = (heading, status) => {
@@ -99,4 +101,6 @@ export const droneIcon = (heading, status) => {
     html: `<div style="transform:rotate(${bucket}deg);transition:transform 0.2s linear;" class="flex items-center justify-center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 16M4 20L20 4" stroke="${color}" stroke-width="1.5" opacity="0.6"/><circle cx="4" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="4" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><path d="M12 3L6 17l6-3.5 6 3.5z" fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     className: 'custom-drone-icon', iconSize: [34, 34]
   });
+  droneIconCache.set(key, icon);
+  return icon;
 };

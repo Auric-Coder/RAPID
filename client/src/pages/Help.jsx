@@ -423,7 +423,7 @@ function Help() {
 
             {/* Realtime Video Stream Feed Placeholder */}
             {drone && (drone.status === 'active' || drone.status === 'on_site') && (
-              <div className="bg-black rounded-2xl aspect-video overflow-hidden relative border border-cyan-500/30 glow-cyan mb-4">
+              <div className="bg-black rounded-2xl aspect-video overflow-hidden relative border border-cyan-500/30 mb-4">
                 <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-red-600 text-white px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider animate-pulse">
                   <span className="h-1.5 w-1.5 rounded-full bg-white"></span>
                   LIVE CAMERA FEED

@@ -133,7 +133,7 @@ function SecurityAudit() {
         </div>
       )}
 
-      <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+      <div className="bg-surface rounded-2xl p-5 border border-border">
         <div className="space-y-2">
           {loading ? (
             [0, 1, 2, 3].map(i => <SkeletonRow key={i} />)

@@ -19,8 +19,9 @@ const ACTIVE_STATUSES = ['Dispatched', 'En Route', 'On Scene', 'AI Monitoring', 
  *   latitude  = north/south (Goa is ~15° N)
  *   longitude = east/west   (Goa is ~73–74° E)
  *
- * Battery drain is distance-proportional, using energyConfig constants.
- * Clearly labelled: SIMULATED ENERGY MODEL
+ * Command 3 Update:
+ *   Battery drain is now distance-proportional using energyConfig constants.
+ *   Clearly labeled: SIMULATED ENERGY MODEL
  */
 
 // ============================================================
@@ -107,7 +108,7 @@ const simulatorService = {
   start() {
     if (simIntervalId) return;
 
-    console.log('Telemetry Simulator: starting (1 tick/second).');
+    console.log('🚁 Telemetry Simulator: Starting simulation loop (1 tick/second)...');
     console.log(`   Energy model: ${energyCfg.CRUISE_ENERGY_PER_KM}%/km cruise | ${energyCfg.HOVER_DRAIN_PER_SECOND * 60}%/min hover | ${energyCfg.SAFETY_RESERVE_PERCENT}% reserve`);
 
     let historyWriteCounter = 0;
@@ -121,7 +122,7 @@ const simulatorService = {
           if (drone.is_hardware_active) continue;
 
           if (!isValidCoord(drone.latitude) || !isValidCoord(drone.longitude)) {
-            console.error(`Simulator: drone ${drone.call_sign} has invalid coordinates. Skipping.`);
+            console.error(`❌ Simulator: Drone ${drone.call_sign} has invalid coordinates. Skipping.`);
             continue;
           }
 
@@ -136,8 +137,13 @@ const simulatorService = {
             const incident = await db.incidents.get(drone.current_incident_id);
 
             if (incident) {
-              if (!isValidCoord(incident.latitude) || !isValidCoord(incident.longitude)) {
-                console.error(`Simulator: incident ${incident.id} has invalid coordinates. Recalling drone.`);
+              if (incident.status === 'cancelled' || incident.status === 'resolved') {
+                console.log(`⚠️  ${drone.call_sign}: Incident ${incident.id} is ${incident.status}. Recalling to base.`);
+                updatedFields.status = 'Returning';
+                updatedFields.current_incident_id = null;
+                stateChanged = true;
+              } else if (!isValidCoord(incident.latitude) || !isValidCoord(incident.longitude)) {
+                console.error(`❌ Simulator: Incident ${incident.id} has invalid coordinates. Recalling drone.`);
                 updatedFields.status = 'Returning';
                 stateChanged = true;
               } else {
@@ -165,9 +171,9 @@ const simulatorService = {
                 if (drone.status === 'Dispatched') {
                   updatedFields.status = 'En Route';
                   stateChanged = true;
-                  console.log(`${drone.call_sign}: En Route to "${incident.title}" | Distance: ${(distRemaining / 1000).toFixed(2)} km`);
+                  console.log(`✈️  ${drone.call_sign}: En Route to "${incident.title}" | Distance: ${(distRemaining / 1000).toFixed(2)} km`);
 
-                  // Start recording when dispatch begins.
+                  // AUTO-START RECORDING when mission begins (Command 2)
                   try {
                     const existingRec = await db.missionRecordings.getForDrone(drone.id);
                     if (!existingRec || existingRec.status !== 'recording') {
@@ -186,10 +192,10 @@ const simulatorService = {
                         action:      'control',
                         notes:       `[DEMO] Recording automatically started for ${drone.call_sign}. Source: DEMO_SIMULATION.`
                       });
-                      console.log(`${drone.call_sign}: Recording started (DEMO_SIMULATION).`);
+                      console.log(`🎬 ${drone.call_sign}: Recording automatically started (DEMO_SIMULATION).`);
                     }
                   } catch (recErr) {
-                    console.error(`Recording auto-start error: ${recErr.message}`);
+                    console.error(`⚠️  Recording auto-start error: ${recErr.message}`);
                   }
                 }
 
@@ -200,8 +206,8 @@ const simulatorService = {
                   updatedFields.altitude = HOVER_ALTITUDE_M;
                   stateChanged = true;
 
-                  console.log(`${drone.call_sign}: arrived at "${incident.title}" | GPS [${stepResult.lat.toFixed(4)}°N, ${stepResult.lng.toFixed(4)}°E].`);
-                  console.log(`   Status → On Scene. Awaiting controller command.`);
+                  console.log(`📍 ${drone.call_sign}: ARRIVED at "${incident.title}" | GPS [${stepResult.lat.toFixed(4)}°N, ${stepResult.lng.toFixed(4)}°E]`);
+                  console.log(`   Status → On Scene. Awaiting controller command. NOT auto-returning.`);
 
                   const activeIncident = await db.incidents.update(incident.id, { status: 'active' });
                   websocketService.broadcastIncidentUpdate(activeIncident);
@@ -215,7 +221,7 @@ const simulatorService = {
                 }
               }
             } else {
-              console.log(`${drone.call_sign}: assigned incident not found. Recalling.`);
+              console.log(`⚠️  ${drone.call_sign}: Assigned incident not found. Recalling.`);
               updatedFields.status = 'Returning';
               stateChanged = true;
             }
@@ -232,6 +238,12 @@ const simulatorService = {
             const incident = await db.incidents.get(drone.current_incident_id);
 
             if (incident) {
+              if (incident.status === 'cancelled' || incident.status === 'resolved') {
+                console.log(`⚠️  ${drone.call_sign}: Incident ${incident.id} is ${incident.status}. Recalling to base.`);
+                updatedFields.status = 'Returning';
+                updatedFields.current_incident_id = null;
+                stateChanged = true;
+              } else {
               // SIMULATED ENERGY MODEL — hover drain per second
               updatedFields = {
                 battery_level: Math.round(Math.max(0, drone.battery_level - energyCfg.HOVER_DRAIN_PER_SECOND))
@@ -279,9 +291,10 @@ const simulatorService = {
               const returnCheck = energyCfg.calculateReturnFeasibility(currentBattery, distToBaseM / 1000);
 
               if (returnCheck.status === 'CRITICAL' && !['Returning', 'Mission Complete'].includes(drone.status)) {
+                // Critical safety return — log and trigger
                 updatedFields.status = 'Returning';
                 stateChanged = true;
-                console.log(`${drone.call_sign}: CRITICAL BATTERY (${currentBattery.toFixed(1)}%). Auto-return triggered.`);
+                console.log(`🚨 ${drone.call_sign}: CRITICAL BATTERY (${currentBattery.toFixed(1)}%). Auto-return triggered for safety.`);
                 await db.dispatchLogs.create({
                   incident_id: drone.current_incident_id,
                   drone_id:    drone.id,
@@ -334,8 +347,9 @@ const simulatorService = {
                   stateChanged = true;
                 }
               }
+              }
             } else {
-              console.log(`${drone.call_sign}: incident resolved or deleted. Recalling.`);
+              console.log(`⚠️  ${drone.call_sign}: Incident resolved/deleted. Recalling.`);
               updatedFields.status = 'Returning';
               stateChanged = true;
             }
@@ -347,7 +361,7 @@ const simulatorService = {
           // ----------------------------------------------------------
           else if (drone.status === 'Returning') {
             if (!isValidCoord(drone.base_latitude) || !isValidCoord(drone.base_longitude)) {
-              console.error(`Simulator: ${drone.call_sign} has invalid base coordinates. Cannot return.`);
+              console.error(`❌ Simulator: ${drone.call_sign} has invalid base coordinates. Cannot return.`);
               continue;
             }
 
@@ -376,7 +390,7 @@ const simulatorService = {
               updatedFields.heading   = 0.0;
               stateChanged = true;
 
-              console.log(`${drone.call_sign}: returned to base. Recharging.`);
+              console.log(`🏠 ${drone.call_sign}: Returned to base. Initiating recharge.`);
 
               if (drone.current_incident_id) {
                 await db.dispatchLogs.create({
@@ -393,6 +407,7 @@ const simulatorService = {
           // STATE: Mission Complete — finalize recording + transition
           // ----------------------------------------------------------
           else if (drone.status === 'Mission Complete') {
+            // AUTO-FINALIZE RECORDING when mission ends (Command 2)
             try {
               const activeRec = await db.missionRecordings.getForDrone(drone.id);
               if (activeRec && activeRec.status === 'recording') {
@@ -409,13 +424,14 @@ const simulatorService = {
                     notes:       `[DEMO] Recording finalized. Duration: ${Math.floor(durationSec / 60)}m ${durationSec % 60}s. Source: DEMO_SIMULATION.`
                   });
                 }
-                console.log(`${drone.call_sign}: Recording finalised (${Math.floor(durationSec / 60)}m ${durationSec % 60}s).`);
+                console.log(`✅ ${drone.call_sign}: Recording finalized (${Math.floor(durationSec / 60)}m ${durationSec % 60}s).`);
               }
             } catch (recErr) {
-              console.error(`Recording finalise error: ${recErr.message}`);
+              console.error(`⚠️  Recording finalize error: ${recErr.message}`);
             }
 
-            // Close the RL experience tuple opened at dispatch time, now that the mission outcome is known.
+            // Phase 2: close out the experience tuple opened at dispatch
+            // time, now that the mission's outcome is fully known.
             try {
               const missionId = drone.current_incident_id;
               if (missionId) {
@@ -456,24 +472,24 @@ const simulatorService = {
                 });
               }
             } catch (rlErr) {
-              console.error(`RL experience recording error: ${rlErr.message}`);
+              console.error(`⚠️  RL experience recording error: ${rlErr.message}`);
             }
 
             updatedFields.status              = drone.battery_level < 100 ? 'Charging' : 'Standby';
             updatedFields.current_incident_id = null;
             stateChanged = true;
-            console.log(`${drone.call_sign}: mission complete. Status → ${updatedFields.status}.`);
+            console.log(`✅ ${drone.call_sign}: Mission complete. Status → ${updatedFields.status}.`);
           }
 
           // ----------------------------------------------------------
-          // STATE: Patrolling — border/protected-zone surveillance
+          // STATE: Patrolling — border/protected-zone surveillance (Phase 5)
           // ----------------------------------------------------------
           else if (drone.status === 'Patrolling') {
             try {
               updatedFields = await surveillanceCoordinator.tickPatrol(drone);
               if (updatedFields.status === 'Returning') stateChanged = true;
             } catch (patrolErr) {
-              console.error(`Patrol tick error for ${drone.call_sign}: ${patrolErr.message}`);
+              console.error(`⚠️  Patrol tick error for ${drone.call_sign}: ${patrolErr.message}`);
             }
           }
 
@@ -529,7 +545,7 @@ const simulatorService = {
           aiStatus: active > 0 ? 'ONLINE / TRACKING' : 'ONLINE / IDLE'
         });
       } catch (err) {
-        console.error('Telemetry Simulator loop error:', err.message);
+        console.error('❌ Telemetry Simulator Loop Error:', err.message);
       }
     }, 1000);
   },
@@ -538,7 +554,7 @@ const simulatorService = {
     if (simIntervalId) {
       clearInterval(simIntervalId);
       simIntervalId = null;
-      console.log('Telemetry Simulator: stopped.');
+      console.log('🛑 Telemetry Simulator: Simulation loop stopped.');
     }
   }
 };

@@ -1,8 +1,8 @@
 /**
- * RAPID Voice AI — Entity Extraction (stub)
+ * RAPID Voice AI — Entity Extraction (Phase 3, STUB)
  *
- * Regex/keyword-based extraction — an explainable stub, not a trained
- * NER model, same philosophy as nlpClassifier.js.
+ * Regex/keyword-based extraction, same "explainable stub, not a trained
+ * NER model" philosophy as nlpClassifier.js.
  */
 
 const WEAPON_KEYWORDS = ['gun', 'knife', 'pistol', 'rifle', 'weapon', 'blade'];

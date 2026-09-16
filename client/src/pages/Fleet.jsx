@@ -1,17 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Layers, Battery, Compass, CheckCircle, AlertTriangle, ShieldCheck, PenTool, Link2, Eye, Cpu, Radio, User } from 'lucide-react';
-import { SkeletonCard } from '../components/shared/Skeleton';
 
 function Fleet() {
   const [drones, setDrones] = useState([]);
   const [editingDrone, setEditingDrone] = useState(null);
   const [streamUrl, setStreamUrl] = useState('');
-  // Without this, an empty `drones` array during the initial fetch rendered a
-  // blank grid with no sign anything was loading. Set false only after the
-  // mount effect resolves, not inside fetchDrones(): that also runs from
-  // toggleMaintenance and handleUpdateStream, and must not flash the skeleton
-  // back over already-loaded cards.
-  const [loading, setLoading] = useState(true);
 
   const fetchDrones = async () => {
     try {
@@ -38,11 +31,9 @@ function Fleet() {
   };
 
   useEffect(() => {
-    let ignore = false;
-    const sync = async () => { if (!ignore) await fetchDrones(); };
-    sync().finally(() => { if (!ignore) setLoading(false); });
-    const interval = setInterval(sync, 2000);
-    return () => { ignore = true; clearInterval(interval); };
+    fetchDrones();
+    const interval = setInterval(fetchDrones, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleMaintenance = async (id, currentStatus) => {
@@ -96,9 +87,12 @@ function Fleet() {
 
       {/* Main Drones Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          [0, 1, 2, 3, 4, 5].map(i => <SkeletonCard key={i} />)
-        ) : drones.map((drone) => {
+        {drones.map((drone) => {
+          const batteryColor = drone.battery_level > 60
+            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+            : drone.battery_level > 20
+            ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+            : 'text-red-400 bg-red-500/10 border-red-500/20 animate-pulse';
 
           const batteryBar = drone.battery_level > 60
             ? 'bg-emerald-500'

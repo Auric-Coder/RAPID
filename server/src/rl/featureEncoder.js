@@ -1,5 +1,5 @@
 /**
- * RAPID RL — Feature Encoder
+ * RAPID RL — Feature Encoder (Phase 7)
  *
  * Single source of truth for the fixed-size numeric feature vector the
  * neural policy trains and predicts on. Used from two places that must

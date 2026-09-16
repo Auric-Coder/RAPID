@@ -46,7 +46,8 @@
         {
           "locationWhenInUsePermission": "RAPID Citizen needs your location to dispatch a responder drone to you."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": false

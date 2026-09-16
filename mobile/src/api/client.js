@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -11,15 +12,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *      time, so set it in the same shell as that command, not at runtime.
  *   2. EXPO_PUBLIC_API_HOST — a bare LAN IP (e.g. "192.168.1.42") for local
  *      dev against a server running on your own machine, port 5000.
- *   3. Platform defaults for local dev: Android emulators can't reach the
- *      host machine via `localhost` — they need the special alias
- *      10.0.2.2; everything else falls back to localhost:5000.
+ *   3. Expo's LAN host for physical devices on the same Wi-Fi.
+ *      With Expo tunnel mode, set EXPO_PUBLIC_API_URL explicitly: the
+ *      Metro tunnel does not proxy the API server on port 5000.
+ *   4. Emulator/localhost defaults when there is no LAN host.
  */
 function resolveApiBase() {
   const fullUrlOverride = process.env.EXPO_PUBLIC_API_URL;
   if (fullUrlOverride) return fullUrlOverride.replace(/\/$/, '');
   const hostOverride = process.env.EXPO_PUBLIC_API_HOST;
   if (hostOverride) return `http://${hostOverride}:5000`;
+  const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
+  if (__DEV__ && expoHost && /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(expoHost)) {
+    return `http://${expoHost}:5000`;
+  }
   if (Platform.OS === 'android') return 'http://10.0.2.2:5000';
   return 'http://localhost:5000';
 }
@@ -36,24 +42,41 @@ export async function setToken(token) {
   else await AsyncStorage.removeItem(TOKEN_KEY);
 }
 
-async function request(path, { method = 'GET', body, auth = false } = {}) {
+async function request(path, { method = 'GET', body, auth = false, signal } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const token = await getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort);
+  if (signal?.aborted) controller.abort();
+  const timeout = setTimeout(abort, 15000);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      signal: controller.signal,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const error = new Error(data.error || `Request failed (${res.status})`);
+      error.status = res.status;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError' && !signal?.aborted) {
+      throw new Error('Server request timed out. Check your connection and API address.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', abort);
   }
-  return data;
 }
 
 export const citizenApi = {
@@ -79,6 +102,16 @@ export const citizenApi = {
       body: { location, category, textReport, deviceInfo }
     }),
 
-  trackEmergency: (incidentId) =>
-    request(`/api/v1/citizen/emergency/${incidentId}`)
+  updateLocation: (incidentId, locationToken, location, signal) =>
+    request(`/api/v1/citizen/emergency/${encodeURIComponent(incidentId)}/location`, {
+      method: 'PATCH', auth: true, body: { locationToken, location }, signal
+    }),
+
+  cancelEmergency: (incidentId, locationToken, signal) =>
+    request(`/api/v1/citizen/emergency/${encodeURIComponent(incidentId)}/cancel`, {
+      method: 'POST', auth: true, body: { locationToken }, signal
+    }),
+
+  trackEmergency: (incidentId, signal) =>
+    request(`/api/v1/citizen/emergency/${encodeURIComponent(incidentId)}`, { signal })
 };

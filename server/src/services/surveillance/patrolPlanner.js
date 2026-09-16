@@ -1,8 +1,8 @@
 /**
- * RAPID Surveillance — Patrol Planner
+ * RAPID Surveillance — Patrol Planner (Phase 5)
  *
- * Waypoint sequencing for the four patrol patterns. Missions without
- * explicit waypoints get them generated
+ * Waypoint sequencing for the four patrol patterns from architecture
+ * Section 5.1. Missions without explicit waypoints get them generated
  * from their zone's polygon: `grid` sweeps the zone's bounding box in
  * a boustrophedon (back-and-forth row) pattern filtered to points
  * actually inside the polygon; `linear`/`circular` walk the polygon's

@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from '../src/context/AuthContext';
+import { LocationSharingProvider } from '../src/context/LocationSharingContext';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <LocationSharingProvider>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerStyle: { backgroundColor: '#0D1626' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -15,6 +17,7 @@ export default function RootLayout() {
         <Stack.Screen name="track/[id]" options={{ title: 'Tracking' }} />
         <Stack.Screen name="contacts" options={{ title: 'Emergency Contacts' }} />
       </Stack>
+      </LocationSharingProvider>
     </AuthProvider>
   );
 }

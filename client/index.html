@@ -5,19 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2306B6D4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='7.5 4.21 12 6.81 16.5 4.21'/%3E%3Cpolyline points='7.5 19.79 7.5 14.6 12 12 16.5 14.6 16.5 19.79'/%3E%3Cpolyline points='12 12 12 22'/%3E%3Cline x1='12' y1='6.81' x2='12' y2='12'/%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RAPID | Command & Dispatch Portal</title>
-    <!-- Google Fonts. Loaded with rel="preload" and an onload swap so the
-         stylesheet fetches at high priority without blocking first paint;
-         Lighthouse measured the plain <link> costing ~881ms. The URL already
-         declares display=swap, so text stays visible in a fallback face
-         throughout. <noscript> covers JS being disabled. -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
-    <!-- Leaflet's CSS is imported from JS in RapidMap.jsx and Help.jsx, so it
-         is bundled into whichever lazy chunk needs it rather than loading on
-         every page, and comes from the npm package rather than a CDN. -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS for maps rendering -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   </head>
   <body class="bg-[#0B0F19] text-gray-200 antialiased overflow-x-hidden min-h-screen">
     <div id="root"></div>

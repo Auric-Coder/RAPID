@@ -1,24 +1,16 @@
-import React, { useEffect, Suspense, lazy } from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Shield, Radio, Layers, FileText, BarChart3, HelpCircle, Activity, Radar, LogOut, BrainCircuit, ShieldCheck } from 'lucide-react';
+import Dashboard from './pages/Dashboard';
+import Fleet from './pages/Fleet';
+import Incidents from './pages/Incidents';
+import Analytics from './pages/Analytics';
+import Surveillance from './pages/Surveillance';
+import RLConsole from './pages/RLConsole';
+import SecurityAudit from './pages/SecurityAudit';
+import Help from './pages/Help';
 import Login from './pages/Login';
 import useRapidStore from './store/rapidStore';
-
-// Every page below loads on demand. Login stays a static import: it is the
-// first thing an unauthenticated visitor needs and pulls in none of the heavy
-// libraries, so lazy-loading it would only add a round trip. The other eight
-// are what actually pull in Leaflet, recharts and framer-motion -- Dashboard
-// via RapidMap and its modals, Analytics and RLConsole via recharts, Help via
-// both. None of the three are reachable from this file or any other eager
-// module, so these boundaries separate them out cleanly.
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Fleet = lazy(() => import('./pages/Fleet'));
-const Incidents = lazy(() => import('./pages/Incidents'));
-const Analytics = lazy(() => import('./pages/Analytics'));
-const Surveillance = lazy(() => import('./pages/Surveillance'));
-const RLConsole = lazy(() => import('./pages/RLConsole'));
-const SecurityAudit = lazy(() => import('./pages/SecurityAudit'));
-const Help = lazy(() => import('./pages/Help'));
 
 const ROLE_LABELS = {
   NATIONAL_COMMANDER: 'National Commander',
@@ -127,7 +119,8 @@ function MainLayout({ children }) {
   );
 }
 
-// Gates command-centre routes behind the httpOnly-cookie session. /help stays public.
+// RAPID v1.3 — Phase 6: gates the command-center routes behind the
+// httpOnly-cookie session. /help (citizen portal) stays public.
 function RequireAuth({ children }) {
   const currentUser = useRapidStore(s => s.currentUser);
   const authChecked = useRapidStore(s => s.authChecked);
@@ -146,24 +139,12 @@ function RequireAuth({ children }) {
   return children;
 }
 
-// Shown while a lazy page chunk downloads. Deliberately minimal, matching
-// RequireAuth's "AUTHENTICATING…" state above. Per-page skeletons live in the
-// pages themselves.
-function RouteLoadingFallback() {
-  return (
-    <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
-      <span className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">LOADING…</span>
-    </div>
-  );
-}
-
 function App() {
   const checkAuth = useRapidStore(s => s.checkAuth);
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
   return (
     <Router>
-      <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         {/* Standalone Citizen Portal (Mobile friendly, no sidebar) */}
         <Route path="/help" element={<Help />} />
@@ -247,7 +228,6 @@ function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-      </Suspense>
     </Router>
   );
 }

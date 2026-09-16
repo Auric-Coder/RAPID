@@ -1,48 +1,59 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync } from 'expo-audio';
-import * as Location from 'expo-location';
+import { getEmergencyLocation, useLocationSharing } from '../src/context/LocationSharingContext';
 import { useRouter } from 'expo-router';
 import { citizenApi } from '../src/api/client';
 
 export default function ReportVoice() {
   const router = useRouter();
+  const sharing = useLocationSharing();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
   const [transcriptDraft, setTranscriptDraft] = useState('');
   const [location, setLocation] = useState(null);
+  const [locationError, setLocationError] = useState(null);
   const [classification, setClassification] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const position = await Location.getCurrentPositionAsync({});
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy_m: position.coords.accuracy });
-      }
-    })();
+    let cancelled = false;
+    getEmergencyLocation().then(value => {
+      if (!cancelled) setLocation(value);
+    }).catch(err => {
+      if (!cancelled) setLocationError(err.message);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const startRecording = async () => {
-    const { granted } = await requestRecordingPermissionsAsync();
-    if (!granted) {
-      Alert.alert('Microphone permission required', 'Enable microphone access to record a voice report.');
-      return;
+    try {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        Alert.alert('Microphone permission required', 'Enable microphone access for Expo Go in Android Settings.');
+        return;
+      }
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setIsRecording(true);
+      setHasRecording(false);
+      setClassification(null);
+    } catch (err) {
+      Alert.alert('Could not start recording', err.message);
     }
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setIsRecording(true);
-    setHasRecording(false);
-    setClassification(null);
   };
 
   const stopRecording = async () => {
-    await recorder.stop();
-    setIsRecording(false);
-    setHasRecording(true);
+    try {
+      await recorder.stop();
+      setHasRecording(true);
+    } catch (err) {
+      Alert.alert('Could not save recording', err.message);
+    } finally {
+      setIsRecording(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -52,7 +63,10 @@ export default function ReportVoice() {
     }
     setAnalyzing(true);
     try {
-      const result = await citizenApi.submitVoiceReport(transcriptDraft.trim(), location || { lat: 0, lng: 0 });
+      const freshLocation = await getEmergencyLocation();
+      setLocation(freshLocation);
+      setLocationError(null);
+      const result = await citizenApi.submitVoiceReport(transcriptDraft.trim(), freshLocation);
       setClassification(result);
     } catch (err) {
       Alert.alert('Analysis failed', err.message);
@@ -62,18 +76,19 @@ export default function ReportVoice() {
   };
 
   const handleConfirmSend = async () => {
-    if (!location) {
-      Alert.alert('Location required', 'Waiting for GPS lock — please try again in a moment.');
-      return;
-    }
+    if (submitting) return;
     setSubmitting(true);
     try {
+      const freshLocation = await getEmergencyLocation();
+      setLocation(freshLocation);
+      setLocationError(null);
       const result = await citizenApi.submitEmergency({
-        location,
+        location: freshLocation,
         category: classification?.classification?.category,
         textReport: transcriptDraft.trim(),
         deviceInfo: { os: Platform.OS, appVersion: '1.0.0' }
       });
+      sharing.startSharing(result, freshLocation);
       router.replace(`/track/${result.incidentId}`);
     } catch (err) {
       Alert.alert('Submission failed', err.message);
@@ -84,6 +99,8 @@ export default function ReportVoice() {
 
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.container}>
+      <Text style={styles.sttNote}>Sending shares your live location while the app is open. Stop sharing from the tracking screen.</Text>
+      <Text style={styles.sttNote}>{location ? `GPS: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : (locationError || 'Acquiring GPS…')}</Text>
       <View style={styles.recordSection}>
         <TouchableOpacity
           style={[styles.recordButton, isRecording && styles.recordButtonActive]}

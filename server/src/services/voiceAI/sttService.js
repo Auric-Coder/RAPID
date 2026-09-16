@@ -1,12 +1,12 @@
 /**
- * RAPID Voice AI — Speech-to-Text (stub)
+ * RAPID Voice AI — Speech-to-Text (Phase 3, STUB)
  *
  * No STT provider is configured in this project (no API keys anywhere in
- * the repo), so this is a stub/mock pipeline path, not a real integration.
- * Swapping in Whisper or Google Cloud STT later means replacing only
- * `transcribe()` below; everything downstream (classification, entity
- * extraction) already consumes plain transcript text and doesn't need
- * to change.
+ * the repo) — per the architecture doc's open question #4, this is the
+ * "stub/mock pipeline" path, not a real integration. Swapping in Whisper
+ * or Google Cloud STT later means replacing only `transcribe()` below;
+ * everything downstream (classification, entity extraction) already
+ * consumes plain transcript text and doesn't need to change.
  *
  * To keep the rest of the pipeline genuinely exercisable without a real
  * STT backend, `transcribe()` accepts an already-written transcript as a

@@ -1,11 +1,12 @@
 /**
- * RAPID Camera — Camera Manager
+ * RAPID Camera — Camera Manager (Phase 4)
  *
  * Formalizes the recording/snapshot lifecycle that used to be inline
- * in simulatorService.js and drones.js into one service. Behavior is
- * preserved exactly (auto-start on mission start, auto-finalize on
- * mission end, same log messages) — the only new behavior is the
- * evidence hash chain and night-vision tagging layered on top.
+ * in simulatorService.js and drones.js into one service, per
+ * architecture Section 8. Behavior is preserved exactly (auto-start on
+ * mission start, auto-finalize on mission end, same log messages) —
+ * the only new behavior is the evidence hash chain and night-vision
+ * tagging layered on top.
  *
  * Chains are scoped per-incident and per-evidence-type (one chain for
  * this incident's snapshots, a separate one for its recordings) rather

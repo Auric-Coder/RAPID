@@ -47,7 +47,7 @@ const telemetryGateway = {
       throw new Error(`No drone registered with hardware ID: ${parsedPacket.hardwareId}`);
     }
 
-    console.log(`Ingestion Gateway: Telemetry received for drone ${targetDrone.call_sign} (Source: ${sourceType.toUpperCase()})`);
+    console.log(`📡 Ingestion Gateway: Telemetry received for drone ${targetDrone.call_sign} (Source: ${sourceType.toUpperCase()})`);
 
     // Prepare updates
     const updates = {

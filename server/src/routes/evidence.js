@@ -3,7 +3,7 @@ const router = express.Router();
 const cameraManager = require('../services/camera/cameraManager');
 
 /**
- * RAPID Evidence Routes
+ * RAPID Evidence Routes — Phase 4
  *
  * Read-only inspection of an incident's evidence hash chains (snapshots
  * + finalized recordings). A `chainValid: false` result means the chain

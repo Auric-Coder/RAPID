@@ -1,13 +1,15 @@
 /**
- * RAPID RL — Reward Calculator
+ * RAPID RL — Reward Calculator (Phase 2)
  *
- * 13-component composite reward. Deliberately NOT "controller approved
- * = +1, overrode = -1" — most of the signal comes from measurable
- * operational outcomes; controller feedback is one component among many
- * (5% weight).
+ * 13-component composite reward from the v1.3 architecture (Section 15).
+ * Deliberately NOT "controller approved = +1, overrode = -1" — most of
+ * the signal comes from measurable operational outcomes; controller
+ * feedback is one component among many (5% weight).
  *
- * Computed and stored with every experience tuple; trainer.js samples
- * these to update the neural policy's weights.
+ * Nothing consumes this to update policy weights yet (Phase 2 defers the
+ * neural network — see architecture doc open question #1). It's computed
+ * and stored with every experience tuple so real data accumulates for
+ * whenever a trainable policy exists.
  */
 
 const WEIGHTS = Object.freeze({

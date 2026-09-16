@@ -1,3 +1,12 @@
+/**
+ * RAPID Voice AI — NLP Classification (Phase 3, STUB)
+ *
+ * Deterministic keyword-based category + severity classifier — same
+ * "explainable, deterministic, NOT a trained model" labelling philosophy
+ * as fleetDecisionEngine.js. This is what "stub pipeline" means per the
+ * architecture doc's open question #4: real intent/sentiment ML is a
+ * later swap-in, this makes the pipeline shape real today.
+ */
 
 const CATEGORY_KEYWORDS = {
   fire: ['fire', 'smoke', 'burning', 'flames', 'blaze'],
@@ -39,6 +48,14 @@ function classifySeverity(textLower) {
   return { severity: 'medium', confidence: 0.4 };
 }
 
+/**
+ * @param {string} transcript
+ * @returns {{
+ *   category: string, categoryConfidence: number,
+ *   severity: string, severityConfidence: number,
+ *   secondaryCategory: string|null, secondaryConfidence: number
+ * }}
+ */
 function classify(transcript) {
   const textLower = (transcript || '').toLowerCase();
   const scores = scoreCategory(textLower);

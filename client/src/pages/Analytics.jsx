@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, PieChart as PieIcon, LineChart as LineIcon, Activity, Battery, ShieldAlert, CheckSquare } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { SkeletonStatTile, SkeletonChart } from '../components/shared/Skeleton';
 
 // Colors for category chart pie sectors
 const COLORS = ['#06B6D4', '#F97316', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
 function Analytics() {
-  // These defaults only need to be structurally valid. `loading` gates a
-  // skeleton, so they are never rendered as real values.
   const [summary, setSummary] = useState({
-    totalDrones: 0, activeDrones: 0, maintenanceDrones: 0, idleDrones: 0,
-    activeIncidents: 0, resolvedIncidents: 0, totalIncidents: 0, averageBattery: 0
+    totalDrones: 5,
+    activeDrones: 0,
+    maintenanceDrones: 1,
+    idleDrones: 4,
+    activeIncidents: 0,
+    resolvedIncidents: 0,
+    totalIncidents: 0,
+    averageBattery: 100
   });
-  const [loading, setLoading] = useState(true);
 
   const [charts, setCharts] = useState({
     categories: [],
@@ -21,35 +23,26 @@ function Analytics() {
     droneUsage: []
   });
 
-  useEffect(() => {
-    let ignore = false;
+  const fetchMetrics = async () => {
+    try {
+      const summaryRes = await fetch('/api/metrics/summary');
+      const chartRes = await fetch('/api/metrics/historical');
 
-    const fetchMetrics = async () => {
-      try {
-        const summaryRes = await fetch('/api/metrics/summary');
-        const chartRes = await fetch('/api/metrics/historical');
-
-        if (ignore) return;
-        if (summaryRes.ok && chartRes.ok) {
-          const summaryData = await summaryRes.json();
-          const chartData = await chartRes.json();
-          if (ignore) return;
-          setSummary(summaryData);
-          setCharts(chartData);
-        }
-      } catch (err) {
-        if (!ignore) console.error(err);
-      } finally {
-        // Only the FIRST resolution (success or failure) should end the
-        // loading state - later 3s poll ticks must not flash the skeleton
-        // back over already-displayed real data.
-        if (!ignore) setLoading(false);
+      if (summaryRes.ok && chartRes.ok) {
+        const summaryData = await summaryRes.json();
+        const chartData = await chartRes.json();
+        setSummary(summaryData);
+        setCharts(chartData);
       }
-    };
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
+  useEffect(() => {
     fetchMetrics();
     const interval = setInterval(fetchMetrics, 3000);
-    return () => { ignore = true; clearInterval(interval); };
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -66,11 +59,6 @@ function Analytics() {
       </div>
 
       {/* Overview stats cards */}
-      {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {[0, 1, 2, 3].map(i => <SkeletonStatTile key={i} />)}
-        </div>
-      ) : (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
           <div className="flex items-center justify-between">
@@ -112,18 +100,10 @@ function Analytics() {
           </p>
         </div>
       </div>
-      )}
 
       {/* Charts Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <SkeletonChart />
-          <SkeletonChart />
-          <div className="lg:col-span-2"><SkeletonChart /></div>
-        </div>
-      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
+        
         {/* Incident alarm trends (Line chart) */}
         <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45] flex flex-col h-80">
           <div className="flex items-center gap-2 mb-4">
@@ -212,7 +192,6 @@ function Analytics() {
         </div>
 
       </div>
-      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { GoogleMap, useJsApiLoader, OverlayView, Circle, Polygon, Polyline } from '@react-google-maps/api';
 import { useShallow } from 'zustand/react/shallow';
 import useRapidStore from '../../store/rapidStore';
@@ -129,10 +129,16 @@ export default function RapidMap() {
   const onMapLoad = useCallback((map) => { mapRef.current = map; }, []);
   const onMapUnmount = useCallback(() => { mapRef.current = null; }, []);
 
-  // react-leaflet's MapContainer only honoured center/zoom on first mount;
-  // GoogleMap re-applies them reactively on every prop change, but we still
-  // drive it imperatively here (panTo/setZoom) so switching the active state
-  // pans smoothly instead of snapping, matching the previous flyTo feel.
+  // GoogleMap (unlike react-leaflet's MapContainer) re-applies `center` on
+  // every render where the prop's object identity changes — and since
+  // mapCenter above is a fresh object literal every render, that was
+  // firing an instant map.setCenter() snap on every drone/incident
+  // telemetry tick, fighting any manual pan/zoom/drag mid-interaction.
+  // So `center`/`zoom` below are only ever the value at first mount; all
+  // camera movement after that is driven imperatively here instead, via
+  // panTo/setZoom, exactly like the old MapRecenter component did.
+  const [initialCenter] = useState(() => mapCenter);
+  const [initialZoom] = useState(() => mapZoom);
   useEffect(() => {
     if (mapRef.current && mapCenter) {
       mapRef.current.panTo(mapCenter);
@@ -144,14 +150,17 @@ export default function RapidMap() {
   const [openInfo, setOpenInfo] = useState(null); // { type, id }
   const closeInfo = () => setOpenInfo(null);
 
-  const mapOptions = {
+  // Memoized for the same reason as initialCenter/initialZoom above — a
+  // fresh object every render would re-trigger map.setOptions() on every
+  // telemetry tick instead of only when the theme actually changes.
+  const mapOptions = useMemo(() => ({
     mapId: isDark ? GOOGLE_MAPS_DARK_MAP_ID : GOOGLE_MAPS_MAP_ID,
     disableDefaultUI: false,
     zoomControl: true,
     streetViewControl: false,
     mapTypeControl: false,
     fullscreenControl: false
-  };
+  }), [isDark]);
 
   return (
     <section className="col-span-6 relative border-r border-border flex flex-col min-h-0 z-10">
@@ -185,8 +194,8 @@ export default function RapidMap() {
         {!loadError && isLoaded && (
           <GoogleMap
             mapContainerStyle={{ height: '100%', width: '100%' }}
-            center={mapCenter}
-            zoom={mapZoom}
+            center={initialCenter}
+            zoom={initialZoom}
             options={mapOptions}
             onLoad={onMapLoad}
             onUnmount={onMapUnmount}

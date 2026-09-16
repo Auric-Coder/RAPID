@@ -18,3 +18,7 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false
+      - key: VITE_GOOGLE_MAPS_API_KEY
+        sync: false

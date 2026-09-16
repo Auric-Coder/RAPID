@@ -1,30 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet';
-// Leaflet's CSS is imported here rather than linked from index.html, so Vite
-// bundles it into this component's lazy chunk. It is fetched only when the
-// Dashboard is visited, and from the npm package rather than a CDN.
-import 'leaflet/dist/leaflet.css';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { GoogleMap, useJsApiLoader, OverlayView, Circle, Polygon, Polyline } from '@react-google-maps/api';
 import { useShallow } from 'zustand/react/shallow';
 import useRapidStore from '../../store/rapidStore';
 import { policeStationIcon, rapidBaseIcon, incidentIcon, droneIcon, FLYING_STATUSES } from '../shared/utils';
 
-const FALLBACK_CENTER = [15.3995, 73.8800];
+const FALLBACK_CENTER = { lat: 15.3995, lng: 73.8800 };
 const FALLBACK_ZOOM = 11;
 
-// Genuine basemaps, not a filter. A `filter: invert()` over standard tiles
-// re-tints every pixel including the ones that carry real information
-// (water, roads, vegetation) — this reads a false-colour map to an
-// emergency responder. Positron/Dark Matter are CARTO's own light/dark
-// tile sets, so colours stay true in both themes.
-const TILE_URL_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const TILE_URL_DARK = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+// A single Map ID styles both themes for now. If a dedicated dark-mode Map
+// ID is ever configured in the Google Cloud Console, set
+// VITE_GOOGLE_MAPS_DARK_MAP_ID and the light/dark follow-theme behaviour
+// below picks it up automatically — Google Maps styling lives on the Map ID
+// itself (Cloud-side), not in a local JS styles array, so it can't be
+// switched purely at runtime the way the old CARTO tile URLs were.
+const GOOGLE_MAPS_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
+const GOOGLE_MAPS_DARK_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_DARK_MAP_ID || GOOGLE_MAPS_MAP_ID;
+
+const MAP_LIBRARIES = [];
 
 // No theme toggle ships in this pass, but the token system underneath
 // already supports one (see [data-theme="dark"] in index.css) — this just
-// makes the tile layer follow it whenever one is added, via the
-// data-theme attribute on <html> rather than a prop drilled down from a
-// toggle that doesn't exist yet.
+// makes the map follow it whenever one is added, via the data-theme
+// attribute on <html> rather than a prop drilled down from a toggle that
+// doesn't exist yet.
 function useIsDarkTheme() {
   const [isDark, setIsDark] = useState(
     typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark'
@@ -39,15 +38,60 @@ function useIsDarkTheme() {
   return isDark;
 }
 
-// react-leaflet only honours MapContainer's center/zoom props on first
-// mount — this component drives the camera on later changes (i.e. when
-// the operator switches the active state).
-function MapRecenter({ center, zoom }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) map.flyTo(center, zoom, { duration: 0.8 });
-  }, [center, zoom, map]);
-  return null;
+// Renders a divIcon-style { html, iconSize } marker descriptor (shared with
+// Help.jsx's separate Leaflet map via shared/utils.js) as a real DOM node
+// positioned over the map, so the exact same Tailwind-classed markup and
+// CSS custom properties keep resolving correctly under Google Maps too.
+function DivMarker({ position, icon, onClick, zIndex }) {
+  const [w, h] = icon.iconSize;
+  return (
+    <OverlayView position={position} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+      <div
+        className={icon.className}
+        style={{ width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2, cursor: 'pointer', zIndex }}
+        onClick={onClick}
+        dangerouslySetInnerHTML={{ __html: icon.html }}
+      />
+    </OverlayView>
+  );
+}
+
+function InfoCard({ position, onClose, children }) {
+  return (
+    <OverlayView position={position} mapPaneName={OverlayView.FLOAT_PANE}>
+      <div
+        className="relative -translate-x-1/2 -translate-y-[calc(100%+18px)] bg-white rounded-md shadow-xl px-2.5 py-2 text-xs font-mono text-black whitespace-nowrap"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+        <button
+          className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-slate-800 text-white text-[10px] leading-4 text-center"
+          onClick={onClose}
+        >
+          &times;
+        </button>
+        <div className="absolute left-1/2 -bottom-1.5 -translate-x-1/2 h-3 w-3 bg-white rotate-45" />
+      </div>
+    </OverlayView>
+  );
+}
+
+// A repeating short line-segment symbol stands in for Leaflet's dashArray —
+// Google's Polyline has no native dash-pattern string, only this icons-based
+// repeat trick. Kept as a helper since two lines below use it (route line
+// and GPS trail), matching their original dash cadence roughly 1:1.
+function dashedLineOptions({ color, weight = 1.5, opacity = 1, repeat = '12px', scale = 3 }) {
+  return {
+    strokeOpacity: 0,
+    strokeColor: color,
+    strokeWeight: weight,
+    zIndex: 1,
+    icons: [{
+      icon: { path: 'M 0,-1 0,1', strokeOpacity: opacity, strokeColor: color, scale },
+      offset: '0',
+      repeat
+    }]
+  };
 }
 
 export default function RapidMap() {
@@ -67,13 +111,47 @@ export default function RapidMap() {
   const incidents = useRapidStore(useShallow(s => s.getVisibleIncidents()));
   const mapConfig = useRapidStore(s => s.getActiveMapConfig());
 
-  const mapCenter = mapConfig ? [mapConfig.mapCenter.latitude, mapConfig.mapCenter.longitude] : FALLBACK_CENTER;
+  const mapCenter = mapConfig ? { lat: mapConfig.mapCenter.latitude, lng: mapConfig.mapCenter.longitude } : FALLBACK_CENTER;
   const mapZoom = mapConfig ? mapConfig.mapZoom : FALLBACK_ZOOM;
   const policeStations = mapConfig ? mapConfig.policeStations : [];
   const noFlyZones = mapConfig ? mapConfig.noFlyZones : [];
 
   const activeIncidents = incidents.filter(i => ['reported', 'dispatched', 'active', 'resolved'].includes(i.status));
   const isDark = useIsDarkTheme();
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'rapid-google-map-script',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: MAP_LIBRARIES
+  });
+
+  const mapRef = useRef(null);
+  const onMapLoad = useCallback((map) => { mapRef.current = map; }, []);
+  const onMapUnmount = useCallback(() => { mapRef.current = null; }, []);
+
+  // react-leaflet's MapContainer only honoured center/zoom on first mount;
+  // GoogleMap re-applies them reactively on every prop change, but we still
+  // drive it imperatively here (panTo/setZoom) so switching the active state
+  // pans smoothly instead of snapping, matching the previous flyTo feel.
+  useEffect(() => {
+    if (mapRef.current && mapCenter) {
+      mapRef.current.panTo(mapCenter);
+      mapRef.current.setZoom(mapZoom);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapCenter.lat, mapCenter.lng, mapZoom, activeState]);
+
+  const [openInfo, setOpenInfo] = useState(null); // { type, id }
+  const closeInfo = () => setOpenInfo(null);
+
+  const mapOptions = {
+    mapId: isDark ? GOOGLE_MAPS_DARK_MAP_ID : GOOGLE_MAPS_MAP_ID,
+    disableDefaultUI: false,
+    zoomControl: true,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false
+  };
 
   return (
     <section className="col-span-6 relative border-r border-border flex flex-col min-h-0 z-10">
@@ -92,92 +170,170 @@ export default function RapidMap() {
         ))}
       </div>
 
-      {/* Leaflet map */}
+      {/* Google map */}
       <div className="flex-1 w-full h-full relative z-10">
-        <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '100%', width: '100%' }} zoomControl>
-          <TileLayer url={isDark ? TILE_URL_DARK : TILE_URL_LIGHT} attribution={TILE_ATTRIBUTION} />
-          <MapRecenter center={mapCenter} zoom={mapZoom} key={activeState} />
+        {loadError && (
+          <div className="h-full w-full flex items-center justify-center text-xs font-mono text-status-critical bg-surface">
+            Failed to load Google Maps. Check VITE_GOOGLE_MAPS_API_KEY.
+          </div>
+        )}
+        {!loadError && !isLoaded && (
+          <div className="h-full w-full flex items-center justify-center text-xs font-mono text-muted bg-surface">
+            Loading map…
+          </div>
+        )}
+        {!loadError && isLoaded && (
+          <GoogleMap
+            mapContainerStyle={{ height: '100%', width: '100%' }}
+            center={mapCenter}
+            zoom={mapZoom}
+            options={mapOptions}
+            onLoad={onMapLoad}
+            onUnmount={onMapUnmount}
+            onClick={closeInfo}
+          >
+            {showPoliceStations && policeStations.map((ps, i) => {
+              const pos = { lat: ps.latitude, lng: ps.longitude };
+              return (
+                <React.Fragment key={`ps-${i}`}>
+                  <DivMarker position={pos} icon={policeStationIcon} onClick={() => setOpenInfo({ type: 'ps', id: i })} />
+                  {openInfo?.type === 'ps' && openInfo.id === i && (
+                    <InfoCard position={pos} onClose={closeInfo}>
+                      <div className="font-bold">{ps.name}</div>
+                    </InfoCard>
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-          {showPoliceStations && policeStations.map((ps, i) => (
-            <Marker key={`ps-${i}`} position={[ps.latitude, ps.longitude]} icon={policeStationIcon}>
-              <Popup><div className="text-xs font-mono font-bold text-black">{ps.name}</div></Popup>
-            </Marker>
-          ))}
+            {bases.map((b) => {
+              const pos = { lat: b.latitude, lng: b.longitude };
+              return (
+                <React.Fragment key={`base-${b.id}`}>
+                  <DivMarker position={pos} icon={rapidBaseIcon} onClick={() => setOpenInfo({ type: 'base', id: b.id })} />
+                  {openInfo?.type === 'base' && openInfo.id === b.id && (
+                    <InfoCard position={pos} onClose={closeInfo}>
+                      <div className="font-semibold">
+                        <p className="font-extrabold text-accent">{b.name}</p>
+                        <p>Drones Docked: {drones.filter(d => d.base_id === b.id && d.status === 'Standby').length}</p>
+                      </div>
+                    </InfoCard>
+                  )}
+                  {showCoverageRadius && (
+                    <Circle center={pos} radius={b.coverage_radius_m} options={{ strokeColor: '#1E3A8A', strokeWeight: 1, fillOpacity: 0.03, fillColor: '#1E3A8A', clickable: false }} />
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-          {bases.map((b) => (
-            <React.Fragment key={`base-${b.id}`}>
-              <Marker position={[b.latitude, b.longitude]} icon={rapidBaseIcon}>
-                <Popup><div className="text-xs font-mono font-semibold text-black"><p className="font-extrabold text-accent">{b.name}</p><p>Drones Docked: {drones.filter(d => d.base_id === b.id && d.status === 'Standby').length}</p></div></Popup>
-              </Marker>
-              {showCoverageRadius && <Circle center={[b.latitude, b.longitude]} radius={b.coverage_radius_m} pathOptions={{ color: '#1E3A8A', weight: 1, fillOpacity: 0.03, dashArray: '4,8' }} />}
-            </React.Fragment>
-          ))}
+            {showNoFlyZones && noFlyZones.map((nfz, i) => {
+              // Phase 5: colour by restriction level — absolute (hard
+              // block) reads as more urgent than an advisory patrol zone.
+              // Restriction level is also spelled out in the popup text
+              // below, never conveyed by colour alone (DIRECTION.md §3).
+              const zoneColor = nfz.restrictionLevel === 'advisory' ? '#A15C00' : nfz.restrictionLevel === 'conditional' ? '#B5461A' : '#A3211D';
+              const key = nfz.id || `nfz-${i}`;
+              const path = nfz.polygon.map(p => ({ lat: p.latitude, lng: p.longitude }));
+              const centroid = path.reduce((acc, p) => ({ lat: acc.lat + p.lat / path.length, lng: acc.lng + p.lng / path.length }), { lat: 0, lng: 0 });
+              return (
+                <React.Fragment key={key}>
+                  <Polygon
+                    paths={path}
+                    options={{ strokeColor: zoneColor, strokeWeight: 1.5, fillColor: zoneColor, fillOpacity: 0.15 }}
+                    onClick={() => setOpenInfo({ type: 'nfz', id: key })}
+                  />
+                  {openInfo?.type === 'nfz' && openInfo.id === key && (
+                    <InfoCard position={centroid} onClose={closeInfo}>
+                      <div className="font-bold" style={{ color: zoneColor }}>{nfz.name} ({nfz.restrictionLevel || 'restricted'})</div>
+                    </InfoCard>
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-          {showNoFlyZones && noFlyZones.map((nfz, i) => {
-            // Phase 5: colour by restriction level — absolute (hard
-            // block) reads as more urgent than an advisory patrol zone.
-            // Restriction level is also spelled out in the popup text
-            // below, never conveyed by colour alone (DIRECTION.md §3).
-            const zoneColor = nfz.restrictionLevel === 'advisory' ? '#A15C00' : nfz.restrictionLevel === 'conditional' ? '#B5461A' : '#A3211D';
-            return (
-              <Polygon key={nfz.id || `nfz-${i}`} positions={nfz.polygon.map(p => [p.latitude, p.longitude])} pathOptions={{ color: zoneColor, weight: 1.5, fillColor: zoneColor, fillOpacity: 0.15 }}>
-                <Popup><div className="text-xs font-mono font-bold" style={{ color: zoneColor }}>{nfz.name} ({nfz.restrictionLevel || 'restricted'})</div></Popup>
-              </Polygon>
-            );
-          })}
+            {activeIncidents.map((inc) => {
+              const pos = { lat: inc.latitude, lng: inc.longitude };
+              return (
+                <React.Fragment key={`inc-${inc.id}`}>
+                  <DivMarker position={pos} icon={incidentIcon(inc.severity)} onClick={() => setOpenInfo({ type: 'incident', id: inc.id })} />
+                  {openInfo?.type === 'incident' && openInfo.id === inc.id && (
+                    <InfoCard position={pos} onClose={closeInfo}>
+                      <div className="font-semibold">
+                        <p className="font-bold text-status-critical">{inc.title}</p>
+                        <p>Status: {inc.status.toUpperCase()}</p>
+                        <p>Severity: {inc.severity.toUpperCase()}</p>
+                      </div>
+                    </InfoCard>
+                  )}
+                  {inc.status !== 'resolved' && (
+                    <Circle center={pos} radius={800} options={{ strokeColor: '#A3211D', strokeWeight: 1, fillOpacity: 0.04, fillColor: '#A3211D', clickable: false }} />
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-          {activeIncidents.map((inc) => (
-            <React.Fragment key={`inc-${inc.id}`}>
-              <Marker position={[inc.latitude, inc.longitude]} icon={incidentIcon(inc.severity)}>
-                <Popup>
-                  <div className="text-xs font-mono text-black font-semibold">
-                    <p className="font-bold text-status-critical">{inc.title}</p>
-                    <p>Status: {inc.status.toUpperCase()}</p>
-                    <p>Severity: {inc.severity.toUpperCase()}</p>
-                  </div>
-                </Popup>
-              </Marker>
-              {inc.status !== 'resolved' && <Circle center={[inc.latitude, inc.longitude]} radius={800} pathOptions={{ color: '#A3211D', weight: 1, fillOpacity: 0.04 }} />}
-            </React.Fragment>
-          ))}
+            {drones.map((drone) => {
+              const pos = { lat: drone.latitude, lng: drone.longitude };
+              return (
+                <React.Fragment key={`drone-${drone.id}`}>
+                  <DivMarker
+                    position={pos}
+                    icon={droneIcon(drone.heading, drone.status)}
+                    onClick={() => { selectDrone(drone); setOpenInfo({ type: 'drone', id: drone.id }); }}
+                  />
+                  {openInfo?.type === 'drone' && openInfo.id === drone.id && (
+                    <InfoCard position={pos} onClose={closeInfo}>
+                      <div className="font-semibold">
+                        <p className="font-bold text-accent">{drone.call_sign}</p>
+                        <p>Status: {drone.status}</p>
+                        <p>Battery: {drone.battery_level.toFixed(0)}% | Alt: {drone.altitude.toFixed(0)}m</p>
+                        <p>Speed: {drone.speed.toFixed(0)} m/s | Hdg: {drone.heading.toFixed(0)}°</p>
+                      </div>
+                    </InfoCard>
+                  )}
+                </React.Fragment>
+              );
+            })}
 
-          {drones.map((drone) => (
-            <Marker key={`drone-${drone.id}`} position={[drone.latitude, drone.longitude]} icon={droneIcon(drone.heading, drone.status)}
-              eventHandlers={{ click: () => selectDrone(drone) }}>
-              <Popup>
-                <div className="text-xs font-mono text-black font-semibold">
-                  <p className="font-bold text-accent">{drone.call_sign}</p>
-                  <p>Status: {drone.status}</p>
-                  <p>Battery: {drone.battery_level.toFixed(0)}% | Alt: {drone.altitude.toFixed(0)}m</p>
-                  <p>Speed: {drone.speed.toFixed(0)} m/s | Hdg: {drone.heading.toFixed(0)}°</p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-
-          {/* Route lines. Dashed, static — the earlier flowing-dash
-              animation was decorative motion with no reduced-motion guard;
-              direction of travel is already legible from the drone's own
-              heading arrow, so a static dash pattern loses no information
-              (see the animation budget in index.css). */}
-          {drones.map((drone) => {
-            if (FLYING_STATUSES.includes(drone.status) && drone.current_incident_id) {
-              const inc = incidents.find(i => i.id === drone.current_incident_id);
-              if (inc && !['On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Awaiting Controller'].includes(drone.status)) {
-                return <Polyline key={`line-${drone.id}`} positions={[[drone.latitude, drone.longitude], [inc.latitude, inc.longitude]]} pathOptions={{ color: '#1E3A8A', weight: 1.5, dashArray: '8,8' }} />;
+            {/* Route lines. Dashed, static — the earlier flowing-dash
+                animation was decorative motion with no reduced-motion guard;
+                direction of travel is already legible from the drone's own
+                heading arrow, so a static dash pattern loses no information
+                (see the animation budget in index.css). */}
+            {drones.map((drone) => {
+              if (FLYING_STATUSES.includes(drone.status) && drone.current_incident_id) {
+                const inc = incidents.find(i => i.id === drone.current_incident_id);
+                if (inc && !['On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Awaiting Controller'].includes(drone.status)) {
+                  return (
+                    <Polyline
+                      key={`line-${drone.id}`}
+                      path={[{ lat: drone.latitude, lng: drone.longitude }, { lat: inc.latitude, lng: inc.longitude }]}
+                      options={dashedLineOptions({ color: '#1E3A8A', weight: 1.5 })}
+                    />
+                  );
+                }
               }
-            }
-            if (drone.status === 'Returning') {
-              return <Polyline key={`ret-${drone.id}`} positions={[[drone.latitude, drone.longitude], [drone.base_latitude, drone.base_longitude]]} pathOptions={{ color: '#A15C00', weight: 1.5, dashArray: '8,8' }} />;
-            }
-            return null;
-          })}
+              if (drone.status === 'Returning') {
+                return (
+                  <Polyline
+                    key={`ret-${drone.id}`}
+                    path={[{ lat: drone.latitude, lng: drone.longitude }, { lat: drone.base_latitude, lng: drone.base_longitude }]}
+                    options={dashedLineOptions({ color: '#A15C00', weight: 1.5 })}
+                  />
+                );
+              }
+              return null;
+            })}
 
-          {/* GPS trail */}
-          {selectedDroneId && droneHistory.length > 1 && (
-            <Polyline positions={[...droneHistory].reverse().map(h => [h.latitude, h.longitude])} pathOptions={{ color: '#1E3A8A', weight: 1.2, opacity: 0.5, dashArray: '2,5' }} />
-          )}
-        </MapContainer>
+            {/* GPS trail */}
+            {selectedDroneId && droneHistory.length > 1 && (
+              <Polyline
+                path={[...droneHistory].reverse().map(h => ({ lat: h.latitude, lng: h.longitude }))}
+                options={dashedLineOptions({ color: '#1E3A8A', weight: 1.2, opacity: 0.5, repeat: '7px' })}
+              />
+            )}
+          </GoogleMap>
+        )}
       </div>
 
       <footer className="h-10 bg-surface border-t border-border flex items-center px-4 justify-between font-mono text-[9px] text-muted select-none flex-shrink-0">

@@ -1,7 +1,6 @@
 /**
  * RAPID v1.3 — Shared utility functions and constants for Dashboard components
  */
-import L from 'leaflet';
 
 // ── Status Constants ──
 export const ACTIVE_STATUSES = ['Dispatched', 'En Route', 'On Scene', 'AI Monitoring', 'Hovering', 'Orbiting', 'Following Target', 'Awaiting Controller', 'Returning', 'Patrolling'];
@@ -59,16 +58,20 @@ export const batteryTier = (level) => {
   return 'red';
 };
 
-// ── Leaflet Icon Factories ──
-export const policeStationIcon = L.divIcon({
+// ── Marker Icon Factories ──
+// Plain { html, size } descriptors rather than a map-library-specific icon
+// instance (previously L.divIcon), so the same markup can be rendered by
+// whichever map component is mounting it (Google's OverlayView here, and
+// still Leaflet's divIcon() over in Help.jsx's independent tracking map).
+export const policeStationIcon = {
   html: `<div class="flex items-center justify-center"><div class="h-6 w-6 bg-blue-600 border-2 border-white rounded-full shadow-md flex items-center justify-center"><svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div></div>`,
   className: 'custom-police-icon', iconSize: [26, 26]
-});
+};
 
-export const rapidBaseIcon = L.divIcon({
+export const rapidBaseIcon = {
   html: `<div class="flex items-center justify-center"><div class="h-7 w-7 bg-slate-900 border-2 border-accent rounded-full shadow-lg flex items-center justify-center"><div class="h-2 w-2 bg-accent rounded-full"></div></div></div>`,
   className: 'custom-base-icon', iconSize: [28, 28]
-});
+};
 
 
 const droneIconCache = new Map();
@@ -82,10 +85,10 @@ export const incidentIcon = (severity) => {
 
   const fill = severity === 'critical' ? 'bg-status-critical' : severity === 'high' ? 'bg-status-urgent' : severity === 'medium' ? 'bg-status-warning' : 'bg-status-normal';
   const shape = severity === 'critical' ? 'rounded-sm' : 'rounded-full';
-  const icon = L.divIcon({
+  const icon = {
     html: `<div class="flex items-center justify-center"><div class="h-5 w-5 ${fill} ${shape} border-2 border-white shadow-lg flex items-center justify-center"><span class="text-[9px] font-extrabold text-white">!</span></div></div>`,
     className: 'custom-incident-icon', iconSize: [22, 22]
-  });
+  };
   incidentIconCache.set(key, icon);
   return icon;
 };
@@ -97,10 +100,10 @@ export const droneIcon = (heading, status) => {
   if (cached) return cached;
 
   const color = status === 'Returning' ? '#A15C00' : status === 'Patrolling' ? '#A855F7' : ['Dispatched', 'En Route'].includes(status) ? '#1E3A8A' : '#2F6B3A';
-  const icon = L.divIcon({
+  const icon = {
     html: `<div style="transform:rotate(${bucket}deg);transition:transform 0.2s linear;" class="flex items-center justify-center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 16M4 20L20 4" stroke="${color}" stroke-width="1.5" opacity="0.6"/><circle cx="4" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="4" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><path d="M12 3L6 17l6-3.5 6 3.5z" fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     className: 'custom-drone-icon', iconSize: [34, 34]
-  });
+  };
   droneIconCache.set(key, icon);
   return icon;
 };

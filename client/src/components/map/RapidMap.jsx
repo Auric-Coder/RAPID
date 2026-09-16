@@ -6,6 +6,9 @@ import { policeStationIcon, rapidBaseIcon, incidentIcon, droneIcon, FLYING_STATU
 
 const FALLBACK_CENTER = { lat: 15.3995, lng: 73.8800 };
 const FALLBACK_ZOOM = 11;
+// Stable references for the no-mapConfig fallback, so downstream useMemo
+// deps don't see a "changed" array (a fresh [] literal) on every render.
+const EMPTY_LIST = [];
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 // A single Map ID styles both themes for now. If a dedicated dark-mode Map
@@ -94,6 +97,28 @@ function dashedLineOptions({ color, weight = 1.5, opacity = 1, repeat = '12px', 
   };
 }
 
+// Google's Circle/Polygon/Polyline wrappers apply their `options`/`center`/
+// `path` props the same reference-equality way GoogleMap applies center
+// (see the note on initialCenter below) — a fresh options object on every
+// render forces a real setOptions() call on the underlying shape even when
+// nothing about it actually changed. For the icon-repeat dashed Polylines
+// especially (drone routes, only present while responding to an incident)
+// that recomputes the whole repeated-symbol pattern along the line on every
+// telemetry tick, which is what made the map feel glitchy specifically once
+// an emergency was active. Hoisting the static option objects to constants
+// keeps their reference stable so only genuinely-changing props (a moving
+// drone's path) trigger a real Maps API update.
+const BASE_COVERAGE_OPTIONS = { strokeColor: '#1E3A8A', strokeWeight: 1, fillOpacity: 0.03, fillColor: '#1E3A8A', clickable: false };
+const INCIDENT_RADIUS_OPTIONS = { strokeColor: '#A3211D', strokeWeight: 1, fillOpacity: 0.04, fillColor: '#A3211D', clickable: false };
+const NFZ_OPTIONS_BY_LEVEL = {
+  advisory: { strokeColor: '#A15C00', strokeWeight: 1.5, fillColor: '#A15C00', fillOpacity: 0.15 },
+  conditional: { strokeColor: '#B5461A', strokeWeight: 1.5, fillColor: '#B5461A', fillOpacity: 0.15 },
+  absolute: { strokeColor: '#A3211D', strokeWeight: 1.5, fillColor: '#A3211D', fillOpacity: 0.15 }
+};
+const ROUTE_LINE_OPTIONS = dashedLineOptions({ color: '#1E3A8A', weight: 1.5 });
+const RETURN_LINE_OPTIONS = dashedLineOptions({ color: '#A15C00', weight: 1.5 });
+const GPS_TRAIL_OPTIONS = dashedLineOptions({ color: '#1E3A8A', weight: 1.2, opacity: 0.5, repeat: '7px' });
+
 export default function RapidMap() {
   const droneHistory = useRapidStore(s => s.droneHistory);
   const selectedDroneId = useRapidStore(s => s.selectedDroneId);
@@ -113,11 +138,43 @@ export default function RapidMap() {
 
   const mapCenter = mapConfig ? { lat: mapConfig.mapCenter.latitude, lng: mapConfig.mapCenter.longitude } : FALLBACK_CENTER;
   const mapZoom = mapConfig ? mapConfig.mapZoom : FALLBACK_ZOOM;
-  const policeStations = mapConfig ? mapConfig.policeStations : [];
-  const noFlyZones = mapConfig ? mapConfig.noFlyZones : [];
-
-  const activeIncidents = incidents.filter(i => ['reported', 'dispatched', 'active', 'resolved'].includes(i.status));
+  const policeStations = mapConfig ? mapConfig.policeStations : EMPTY_LIST;
+  const noFlyZones = mapConfig ? mapConfig.noFlyZones : EMPTY_LIST;
   const isDark = useIsDarkTheme();
+
+  // bases/incidents/policeStations are already referentially stable across
+  // unrelated re-renders (useShallow / a direct store reference — see the
+  // options-hoisting note above) — but recomputing derived {lat,lng} pos
+  // objects and dashed-polygon shapes inline in .map() on every render
+  // defeats that stability, since Circle/Polygon read `center`/`paths` the
+  // same reference-equality way. Memoizing on the stable source array keeps
+  // Maps API updates limited to when a base, incident, or zone truly changes.
+  const activeIncidents = useMemo(
+    () => incidents.filter(i => ['reported', 'dispatched', 'active', 'resolved'].includes(i.status)),
+    [incidents]
+  );
+  const policeStationMarkers = useMemo(
+    () => policeStations.map(ps => ({ ...ps, pos: { lat: ps.latitude, lng: ps.longitude } })),
+    [policeStations]
+  );
+  const baseMarkers = useMemo(
+    () => bases.map(b => ({ ...b, pos: { lat: b.latitude, lng: b.longitude } })),
+    [bases]
+  );
+  const incidentMarkers = useMemo(
+    () => activeIncidents.map(inc => ({ ...inc, pos: { lat: inc.latitude, lng: inc.longitude } })),
+    [activeIncidents]
+  );
+  const noFlyZoneShapes = useMemo(() => noFlyZones.map((nfz, i) => {
+    const path = nfz.polygon.map(p => ({ lat: p.latitude, lng: p.longitude }));
+    const centroid = path.reduce((acc, p) => ({ lat: acc.lat + p.lat / path.length, lng: acc.lng + p.lng / path.length }), { lat: 0, lng: 0 });
+    const level = nfz.restrictionLevel === 'advisory' ? 'advisory' : nfz.restrictionLevel === 'conditional' ? 'conditional' : 'absolute';
+    return { ...nfz, key: nfz.id || `nfz-${i}`, path, centroid, options: NFZ_OPTIONS_BY_LEVEL[level] };
+  }), [noFlyZones]);
+  const gpsTrailPath = useMemo(
+    () => (selectedDroneId && droneHistory.length > 1 ? [...droneHistory].reverse().map(h => ({ lat: h.latitude, lng: h.longitude })) : null),
+    [selectedDroneId, droneHistory]
+  );
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'rapid-google-map-script',
@@ -201,85 +258,70 @@ export default function RapidMap() {
             onUnmount={onMapUnmount}
             onClick={closeInfo}
           >
-            {showPoliceStations && policeStations.map((ps, i) => {
-              const pos = { lat: ps.latitude, lng: ps.longitude };
-              return (
-                <React.Fragment key={`ps-${i}`}>
-                  <DivMarker position={pos} icon={policeStationIcon} onClick={() => setOpenInfo({ type: 'ps', id: i })} />
-                  {openInfo?.type === 'ps' && openInfo.id === i && (
-                    <InfoCard position={pos} onClose={closeInfo}>
-                      <div className="font-bold">{ps.name}</div>
-                    </InfoCard>
-                  )}
-                </React.Fragment>
-              );
-            })}
+            {showPoliceStations && policeStationMarkers.map((ps, i) => (
+              <React.Fragment key={`ps-${i}`}>
+                <DivMarker position={ps.pos} icon={policeStationIcon} onClick={() => setOpenInfo({ type: 'ps', id: i })} />
+                {openInfo?.type === 'ps' && openInfo.id === i && (
+                  <InfoCard position={ps.pos} onClose={closeInfo}>
+                    <div className="font-bold">{ps.name}</div>
+                  </InfoCard>
+                )}
+              </React.Fragment>
+            ))}
 
-            {bases.map((b) => {
-              const pos = { lat: b.latitude, lng: b.longitude };
-              return (
-                <React.Fragment key={`base-${b.id}`}>
-                  <DivMarker position={pos} icon={rapidBaseIcon} onClick={() => setOpenInfo({ type: 'base', id: b.id })} />
-                  {openInfo?.type === 'base' && openInfo.id === b.id && (
-                    <InfoCard position={pos} onClose={closeInfo}>
-                      <div className="font-semibold">
-                        <p className="font-extrabold text-accent">{b.name}</p>
-                        <p>Drones Docked: {drones.filter(d => d.base_id === b.id && d.status === 'Standby').length}</p>
-                      </div>
-                    </InfoCard>
-                  )}
-                  {showCoverageRadius && (
-                    <Circle center={pos} radius={b.coverage_radius_m} options={{ strokeColor: '#1E3A8A', strokeWeight: 1, fillOpacity: 0.03, fillColor: '#1E3A8A', clickable: false }} />
-                  )}
-                </React.Fragment>
-              );
-            })}
+            {baseMarkers.map((b) => (
+              <React.Fragment key={`base-${b.id}`}>
+                <DivMarker position={b.pos} icon={rapidBaseIcon} onClick={() => setOpenInfo({ type: 'base', id: b.id })} />
+                {openInfo?.type === 'base' && openInfo.id === b.id && (
+                  <InfoCard position={b.pos} onClose={closeInfo}>
+                    <div className="font-semibold">
+                      <p className="font-extrabold text-accent">{b.name}</p>
+                      <p>Drones Docked: {drones.filter(d => d.base_id === b.id && d.status === 'Standby').length}</p>
+                    </div>
+                  </InfoCard>
+                )}
+                {showCoverageRadius && (
+                  <Circle center={b.pos} radius={b.coverage_radius_m} options={BASE_COVERAGE_OPTIONS} />
+                )}
+              </React.Fragment>
+            ))}
 
-            {showNoFlyZones && noFlyZones.map((nfz, i) => {
-              // Phase 5: colour by restriction level — absolute (hard
-              // block) reads as more urgent than an advisory patrol zone.
-              // Restriction level is also spelled out in the popup text
-              // below, never conveyed by colour alone (DIRECTION.md §3).
-              const zoneColor = nfz.restrictionLevel === 'advisory' ? '#A15C00' : nfz.restrictionLevel === 'conditional' ? '#B5461A' : '#A3211D';
-              const key = nfz.id || `nfz-${i}`;
-              const path = nfz.polygon.map(p => ({ lat: p.latitude, lng: p.longitude }));
-              const centroid = path.reduce((acc, p) => ({ lat: acc.lat + p.lat / path.length, lng: acc.lng + p.lng / path.length }), { lat: 0, lng: 0 });
-              return (
-                <React.Fragment key={key}>
-                  <Polygon
-                    paths={path}
-                    options={{ strokeColor: zoneColor, strokeWeight: 1.5, fillColor: zoneColor, fillOpacity: 0.15 }}
-                    onClick={() => setOpenInfo({ type: 'nfz', id: key })}
-                  />
-                  {openInfo?.type === 'nfz' && openInfo.id === key && (
-                    <InfoCard position={centroid} onClose={closeInfo}>
-                      <div className="font-bold" style={{ color: zoneColor }}>{nfz.name} ({nfz.restrictionLevel || 'restricted'})</div>
-                    </InfoCard>
-                  )}
-                </React.Fragment>
-              );
-            })}
+            {/* Phase 5: colour by restriction level — absolute (hard block)
+                reads as more urgent than an advisory patrol zone. Restriction
+                level is also spelled out in the popup text below, never
+                conveyed by colour alone (DIRECTION.md §3). */}
+            {showNoFlyZones && noFlyZoneShapes.map((nfz) => (
+              <React.Fragment key={nfz.key}>
+                <Polygon
+                  paths={nfz.path}
+                  options={nfz.options}
+                  onClick={() => setOpenInfo({ type: 'nfz', id: nfz.key })}
+                />
+                {openInfo?.type === 'nfz' && openInfo.id === nfz.key && (
+                  <InfoCard position={nfz.centroid} onClose={closeInfo}>
+                    <div className="font-bold" style={{ color: nfz.options.strokeColor }}>{nfz.name} ({nfz.restrictionLevel || 'restricted'})</div>
+                  </InfoCard>
+                )}
+              </React.Fragment>
+            ))}
 
-            {activeIncidents.map((inc) => {
-              const pos = { lat: inc.latitude, lng: inc.longitude };
-              return (
-                <React.Fragment key={`inc-${inc.id}`}>
-                  <DivMarker position={pos} icon={incidentIcon(inc.severity)} onClick={() => setOpenInfo({ type: 'incident', id: inc.id })} />
-                  {openInfo?.type === 'incident' && openInfo.id === inc.id && (
-                    <InfoCard position={pos} onClose={closeInfo}>
-                      <div className="font-semibold">
-                        <p className="font-bold text-status-critical">{inc.title}</p>
-                        <p>Status: {inc.status.toUpperCase()}</p>
-                        <p>Severity: {inc.severity.toUpperCase()}</p>
-                      </div>
-                    </InfoCard>
-                  )}
-                  {inc.status !== 'resolved' && (
-                    <Circle center={pos} radius={800} options={{ strokeColor: '#A3211D', strokeWeight: 1, fillOpacity: 0.04, fillColor: '#A3211D', clickable: false }} />
-                  )}
-                </React.Fragment>
-              );
-            })}
+            {incidentMarkers.map((inc) => (
+              <React.Fragment key={`inc-${inc.id}`}>
+                <DivMarker position={inc.pos} icon={incidentIcon(inc.severity)} onClick={() => setOpenInfo({ type: 'incident', id: inc.id })} />
+                {openInfo?.type === 'incident' && openInfo.id === inc.id && (
+                  <InfoCard position={inc.pos} onClose={closeInfo}>
+                    <div className="font-semibold">
+                      <p className="font-bold text-status-critical">{inc.title}</p>
+                      <p>Status: {inc.status.toUpperCase()}</p>
+                      <p>Severity: {inc.severity.toUpperCase()}</p>
+                    </div>
+                  </InfoCard>
+                )}
+                {inc.status !== 'resolved' && (
+                  <Circle center={inc.pos} radius={800} options={INCIDENT_RADIUS_OPTIONS} />
+                )}
+              </React.Fragment>
+            ))}
 
             {drones.map((drone) => {
               const pos = { lat: drone.latitude, lng: drone.longitude };
@@ -317,7 +359,7 @@ export default function RapidMap() {
                     <Polyline
                       key={`line-${drone.id}`}
                       path={[{ lat: drone.latitude, lng: drone.longitude }, { lat: inc.latitude, lng: inc.longitude }]}
-                      options={dashedLineOptions({ color: '#1E3A8A', weight: 1.5 })}
+                      options={ROUTE_LINE_OPTIONS}
                     />
                   );
                 }
@@ -327,7 +369,7 @@ export default function RapidMap() {
                   <Polyline
                     key={`ret-${drone.id}`}
                     path={[{ lat: drone.latitude, lng: drone.longitude }, { lat: drone.base_latitude, lng: drone.base_longitude }]}
-                    options={dashedLineOptions({ color: '#A15C00', weight: 1.5 })}
+                    options={RETURN_LINE_OPTIONS}
                   />
                 );
               }
@@ -335,12 +377,7 @@ export default function RapidMap() {
             })}
 
             {/* GPS trail */}
-            {selectedDroneId && droneHistory.length > 1 && (
-              <Polyline
-                path={[...droneHistory].reverse().map(h => ({ lat: h.latitude, lng: h.longitude }))}
-                options={dashedLineOptions({ color: '#1E3A8A', weight: 1.2, opacity: 0.5, repeat: '7px' })}
-              />
-            )}
+            {gpsTrailPath && <Polyline path={gpsTrailPath} options={GPS_TRAIL_OPTIONS} />}
           </GoogleMap>
         )}
       </div>

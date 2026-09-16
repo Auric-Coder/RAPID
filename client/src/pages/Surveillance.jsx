@@ -159,7 +159,7 @@ function Surveillance() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Airspace Zones */}
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center gap-2 mb-4">
             <ShieldAlert className="h-4 w-4 text-cyan-400" />
             <h3 className="font-bold text-sm text-white uppercase tracking-wider">Airspace Zones</h3>
@@ -200,7 +200,7 @@ function Surveillance() {
         </div>
 
         {/* Missions */}
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center gap-2 mb-4">
             <MapPinned className="h-4 w-4 text-cyan-400" />
             <h3 className="font-bold text-sm text-white uppercase tracking-wider">Patrol Missions</h3>

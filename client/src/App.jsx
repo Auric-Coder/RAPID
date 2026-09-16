@@ -48,16 +48,16 @@ function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-[#111827] border-r border-[#1F2E45] flex flex-col justify-between h-screen fixed left-0 top-0 z-40">
+    <aside className="w-64 bg-surface border-r border-border flex flex-col justify-between h-screen fixed left-0 top-0 z-40">
       <div>
         {/* Brand Header */}
-        <div className="p-6 border-b border-[#1F2E45] flex items-center gap-3">
-          <div className="bg-cyan-500/10 p-2 rounded-lg border border-cyan-500/30 glow-cyan">
-            <Shield className="h-6 w-6 text-cyan-400" />
+        <div className="p-6 border-b border-border flex items-center gap-3">
+          <div className="bg-accent/10 p-2 rounded-lg border border-accent/30">
+            <Shield className="h-6 w-6 text-accent" />
           </div>
           <div>
-            <h1 className="font-extrabold text-lg tracking-wider text-white">R.A.P.I.D.</h1>
-            <p className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase">Police Dispatch</p>
+            <h1 className="font-extrabold text-lg tracking-wider text-text">R.A.P.I.D.</h1>
+            <p className="text-[10px] text-accent font-mono tracking-widest uppercase">Police Dispatch</p>
           </div>
         </div>
 
@@ -72,11 +72,11 @@ function Sidebar() {
                 to={link.to}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium ${
                   isActive
-                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent'
+                    ? 'bg-accent/10 text-accent border border-accent/20'
+                    : 'text-muted hover:text-text hover:bg-border/40 border border-transparent'
                 }`}
               >
-                <Icon className={`h-5 w-5 ${isActive ? 'text-cyan-400' : 'text-gray-400 group-hover:text-cyan-400'}`} />
+                <Icon className={`h-5 w-5 ${isActive ? 'text-accent' : 'text-muted group-hover:text-accent'}`} />
                 <span>{link.label}</span>
               </Link>
             );
@@ -85,29 +85,32 @@ function Sidebar() {
       </div>
 
       {/* System Status Indicators */}
-      <div className="p-6 border-t border-[#1F2E45] bg-[#0F1523]/50">
+      <div className="p-6 border-t border-border bg-page">
         {currentUser && (
-          <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[#1F2E45]">
+          <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-border">
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-white truncate">{currentUser.fullName}</p>
-              <p className="text-[9px] uppercase text-cyan-400 font-mono tracking-wider truncate">
+              <p className="text-xs font-semibold text-text truncate">{currentUser.fullName}</p>
+              <p className="text-[9px] uppercase text-accent font-mono tracking-wider truncate">
                 {ROLE_LABELS[currentUser.role] || currentUser.role}
               </p>
             </div>
             <button
               onClick={logout}
               title="Log out"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors flex-shrink-0"
+              className="p-1.5 rounded-lg text-muted hover:text-status-critical hover:bg-status-critical/10 transition-colors flex-shrink-0"
             >
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         )}
+        {/* The one animation this file keeps: a live-telemetry heartbeat —
+            motion says "this feed is live right now" in a way a static dot
+            can't. Guarded globally in index.css for prefers-reduced-motion. */}
         <div className="flex items-center gap-2 mb-3">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span className="text-xs font-mono text-emerald-400">TELEMETRY SIM ACTIVE</span>
+          <div className="h-2 w-2 rounded-full bg-status-normal animate-pulse"></div>
+          <span className="text-xs font-mono text-status-normal">TELEMETRY SIM ACTIVE</span>
         </div>
-        <div className="flex items-center justify-between text-[11px] font-mono text-gray-500">
+        <div className="flex items-center justify-between text-[11px] font-mono text-muted">
           <span>HOST: LOCALHOST</span>
           <span>V1.0.0</span>
         </div>
@@ -118,9 +121,9 @@ function Sidebar() {
 
 function MainLayout({ children }) {
   return (
-    <div className="flex min-h-screen bg-[#0B0F19]">
+    <div className="flex min-h-screen bg-page">
       <Sidebar />
-      <main className="flex-1 ml-64 p-8 min-h-screen text-gray-200">
+      <main className="flex-1 ml-64 p-8 min-h-screen text-text">
         {children}
       </main>
     </div>
@@ -135,8 +138,8 @@ function RequireAuth({ children }) {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
-        <span className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">AUTHENTICATING…</span>
+      <div className="min-h-screen bg-page flex items-center justify-center">
+        <span className="text-accent font-mono text-sm tracking-widest">AUTHENTICATING…</span>
       </div>
     );
   }
@@ -151,8 +154,8 @@ function RequireAuth({ children }) {
 // pages themselves.
 function RouteLoadingFallback() {
   return (
-    <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center">
-      <span className="text-cyan-400 font-mono text-sm tracking-widest animate-pulse">LOADING…</span>
+    <div className="min-h-screen bg-page flex items-center justify-center">
+      <span className="text-accent font-mono text-sm tracking-widest">LOADING…</span>
     </div>
   );
 }

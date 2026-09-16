@@ -18,10 +18,10 @@ function Dashboard() {
   useWebSocket();
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden text-gray-200 -m-8 relative hud-scanlines">
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden text-text -m-8 relative">
       <TopCommandBar />
 
-      <div className="grid grid-cols-12 flex-1 min-h-0 bg-[#070B14]">
+      <div className="grid grid-cols-12 flex-1 min-h-0 bg-page">
         <LeftSidebar />
         <RapidMap />
         <MissionControlPanel />

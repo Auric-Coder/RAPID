@@ -121,7 +121,7 @@ function Incidents() {
       </div>
 
       {/* Filter controllers bar */}
-      <div className="cyber-glass rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
         
         {/* Search */}
         <div className="relative w-full md:w-72">
@@ -170,10 +170,10 @@ function Incidents() {
       </div>
 
       {/* Audit Registry Table */}
-      <div className="cyber-glass rounded-2xl overflow-hidden border border-[#1F2E45]">
+      <div className="bg-surface rounded-2xl overflow-hidden border border-border">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="bg-gray-900/60 border-b border-[#1F2E45] font-mono text-gray-400 uppercase tracking-wider">
+            <tr className="bg-page border-b border-border font-mono text-muted uppercase tracking-wider">
               <th className="p-4">Incident Details</th>
               <th className="p-4">Category</th>
               <th className="p-4">Priority</th>
@@ -442,10 +442,10 @@ function Incidents() {
                     {dossierLoading ? (
                       [0, 1, 2].map(i => <SkeletonRow key={i} />)
                     ) : auditLogs.map((log) => (
-                      <div key={log.id} className="relative pl-5 border-l border-cyan-500/20 py-1">
-                        <div className="absolute -left-[4px] top-2.5 h-2 w-2 bg-cyan-400 rounded-full glow-cyan"></div>
+                      <div key={log.id} className="relative pl-5 border-l border-accent/20 py-1">
+                        <div className="absolute -left-[4px] top-2.5 h-2 w-2 bg-accent rounded-full"></div>
                         <div className="flex justify-between items-center text-[10px] font-mono text-gray-500">
-                          <span className="text-cyan-400 font-bold uppercase tracking-wider">
+                          <span className="text-accent font-bold uppercase tracking-wider">
                             {log.action.replace(/_/g, ' ')}
                           </span>
                           <span>{new Date(log.timestamp).toLocaleString()}</span>

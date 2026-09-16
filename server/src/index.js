@@ -35,12 +35,15 @@ const PORT = process.env.PORT || 5000;
 // and req.ip accurately read the X-Forwarded-For client IP.
 app.set('trust proxy', 1);
 
-// CSP allows map tiles (OpenStreetMap/Carto) and inline styling used by Leaflet.
+// CSP allows map tiles (OpenStreetMap/Carto) and inline styling used by
+// Leaflet, plus the Google Maps JS API loader script (RapidMap.jsx) —
+// that one needs an explicit scriptSrc entry since it's loaded from
+// maps.googleapis.com, not same-origin.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://maps.googleapis.com", "https://maps.gstatic.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https:"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
       connectSrc: ["'self'", "https:", "wss:", "ws:"],

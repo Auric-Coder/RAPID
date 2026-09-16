@@ -77,7 +77,7 @@ export default function Login() {
             disabled={submitting || !username || !password}
             className="w-full bg-accent hover:bg-accent/90 border border-accent text-on-solid font-semibold text-sm rounded-lg py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Signing in…' : 'Sign In'}
+            {submitting ? 'Authenticating…' : 'Sign In'}
           </button>
         </form>
 

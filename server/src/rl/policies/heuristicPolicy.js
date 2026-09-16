@@ -1,11 +1,11 @@
 /**
- * RAPID RL — Heuristic Policy
+ * RAPID RL — Heuristic Policy (Phase 2)
  *
  * Wraps the existing, unmodified RAPID Fleet Decision Engine as the
- * frozen LIVE policy. fleetDecisionEngine.js itself is untouched — this
- * is purely an adapter so the dispatch path can go through the policy
- * interface instead of calling the engine directly, without changing
- * what it actually decides.
+ * frozen LIVE policy. R19 (Code Preservation): fleetDecisionEngine.js
+ * itself is untouched — this is purely an adapter so the dispatch path
+ * can go through the policy interface instead of calling the engine
+ * directly, without changing what it actually decides.
  */
 const PolicyInterface = require('./policyInterface');
 const { generateRecommendation } = require('../../services/fleetDecisionEngine');

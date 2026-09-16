@@ -5,7 +5,7 @@ const { NATION, OPERATING_AREAS } = require('./geoConfig');
 require('dotenv').config();
 
 // ============================================================
-// Multi-Agency Organisations
+// Multi-Agency Organisations (Phase 6)
 //
 // All 22 existing bases are genuinely police stations, so they're all
 // seeded under POLICE — the other four organisations exist as real
@@ -26,7 +26,7 @@ const policeOrgId = seedOrganisations.find(o => o.code === 'POLICE').id;
 const aviationControlOrgId = seedOrganisations.find(o => o.code === 'AVIATION_CONTROL').id;
 
 // ============================================================
-// Nationwide hierarchy seed
+// Nationwide hierarchy seed (Phase 1)
 //
 // Nation -> State -> District -> Base is built here from the raw
 // geography in geoConfig.js. Existing Goa drones (seeded below)
@@ -61,12 +61,13 @@ for (const area of OPERATING_AREAS) {
   };
   seedStates.push(stateRecord);
 
-  // Seed airspace zones for this state from geoConfig's raw noFlyZones
-  // + surveillanceZones (patrol-eligible zones). This becomes the live,
-  // CRUD-able source of truth (see routes/airspace.js) — dispatch-time
-  // enforcement and the map both read from db.airspaceZones from here
-  // on, not geoConfig directly, so zones created/edited after startup
-  // are actually enforced rather than being decorative.
+  // Phase 5: seed airspace zones for this state from geoConfig's raw
+  // noFlyZones (existing, unchanged) + surveillanceZones (new demo
+  // patrol-eligible zones). This becomes the live, CRUD-able source of
+  // truth (see routes/airspace.js) — dispatch-time enforcement and the
+  // map both read from db.airspaceZones from here on, not geoConfig
+  // directly, so zones created/edited after startup are actually
+  // enforced rather than being decorative.
   for (const zone of area.noFlyZones || []) {
     seedAirspaceZones.push({
       id: crypto.randomUUID(),
@@ -169,12 +170,12 @@ function findBaseIdByCode(baseCode) {
 }
 
 // ============================================================
-// Demo Personnel Accounts
+// Demo Personnel Accounts (Phase 6)
 //
 // One shared demo password across all seed accounts, purely for ease
 // of trying different roles/scopes — a real deployment would never do
-// this. Distinct from citizen_profiles — these are organisation
-// personnel, not the public.
+// this. Distinct from citizen_profiles (Phase 3) — these are
+// organisation personnel, not the public.
 // ============================================================
 const DEMO_PASSWORD_HASH = bcrypt.hashSync('rapid123', 10);
 const goaStateId = seedStates.find(s => s.code === 'GA')?.id || null;
@@ -331,29 +332,19 @@ const supabaseKey = process.env.SUPABASE_KEY;
 const isSupabaseEnabled = !!(supabaseUrl && supabaseKey);
 
 if (isSupabaseEnabled) {
-  console.log('Database: Supabase backend connected.');
+  console.log('🔌 Database: Supabase backend connected.');
 } else {
-  console.log('Database: Using in-memory database simulation (No Supabase credentials provided).');
+  console.log('💾 Database: Using in-memory database simulation (No Supabase credentials provided).');
 }
 
 const supabase = isSupabaseEnabled ? createClient(supabaseUrl, supabaseKey) : null;
-
-// Cached copy of the unfiltered bases.list() result. Bases have no mutation
-// route anywhere in the app; bases.list() below carries the safety contract.
-let basesListCache = null; // { expires: epoch ms, data: array } | null
-const BASES_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
-
-// Mission and incident state-transition markers, kept in full regardless of any
-// `limit` passed to dispatchLogs.listForIncident(). Excludes 'control' and
-// 'snapshot', which repeat many times over a single mission.
-const DISPATCH_LOG_LIFECYCLE_ACTIONS = ['launch', 'arrival', 'return_to_base', 'abort', 'fleet_decision'];
 
 // Database Adapter Interface
 const db = {
   isSupabase: isSupabaseEnabled,
 
   // -------------------------------------------------------
-  // Nationwide hierarchy — Nation -> State -> District -> Base.
+  // Nationwide hierarchy (Phase 1) — Nation -> State -> District -> Base.
   // Read-mostly reference data; seeded once from geoConfig.js at
   // startup. Supabase branches fall back to the in-memory seed if
   // the tables don't exist yet, same pattern as missionRecordings.
@@ -384,21 +375,10 @@ const db = {
     },
     async get(id) {
       if (isSupabaseEnabled) {
-        // Two safe equality lookups (id, then code) — matches
-        // organisations.get() below. Every caller in this app (routes/geo,
-        // routes/airspace, routes/surveillance, routes/fleet, rl/environment)
-        // passes a human-readable code like 'GA' here, not a UUID. The
-        // previous single `.eq('id', id)` lookup could never match a code
-        // against the UUID primary key, silently fell through to the
-        // in-memory fallback below, and returned that fallback's randomly
-        // generated id — a *different* value on every process restart —
-        // while still returning the correct code/name/etc. fields, which is
-        // exactly what made the wrong id invisible until something filtered
-        // districts/bases/zones by it against the real database.
-        const byId = await supabase.from('states').select('*').eq('id', id).maybeSingle();
-        if (!byId.error && byId.data) return byId.data;
-        const byCode = await supabase.from('states').select('*').eq('code', id).maybeSingle();
-        if (!byCode.error && byCode.data) return byCode.data;
+        try {
+          const { data, error } = await supabase.from('states').select('*').eq('id', id).single();
+          if (!error) return data;
+        } catch (_) {}
       }
       return localDb.states.find(s => s.id === id || s.code === id) || null;
     }
@@ -419,42 +399,20 @@ const db = {
   },
 
   bases: {
-    // The unfiltered call shape, list() / list({}), is cached for 5 minutes.
-    // scopeResolver.js calls it on nearly every authenticated request, as do
-    // surveillanceCoordinator.js and rl/environment.js, which makes it the most
-    // executed query in the app: roughly a 220ms Supabase round trip each time.
-    //
-    // Filtered calls are not cached and always hit the live query. routes/geo.js
-    // passes {stateId, districtId} for /bases.
-    //
-    // Safe because bases have no mutation route. If one is added it must set
-    // `basesListCache` to null, or this serves stale data for five minutes
-    // after every write.
     async list({ stateId, districtId } = {}) {
-      const cacheable = !stateId && !districtId;
-      if (cacheable && basesListCache && basesListCache.expires > Date.now()) {
-        return basesListCache.data;
-      }
-
-      let result;
       if (isSupabaseEnabled) {
         try {
           let query = supabase.from('bases').select('*');
           if (stateId) query = query.eq('state_id', stateId);
           if (districtId) query = query.eq('district_id', districtId);
           const { data, error } = await query;
-          if (!error && data && data.length > 0) result = data;
+          if (!error && data && data.length > 0) return data;
         } catch (_) {}
       }
-      if (!result) {
-        result = localDb.bases.filter(b =>
-          (!stateId || b.state_id === stateId) &&
-          (!districtId || b.district_id === districtId)
-        );
-      }
-
-      if (cacheable) basesListCache = { expires: Date.now() + BASES_LIST_CACHE_TTL_MS, data: result };
-      return result;
+      return localDb.bases.filter(b =>
+        (!stateId || b.state_id === stateId) &&
+        (!districtId || b.district_id === districtId)
+      );
     },
     async get(id) {
       if (isSupabaseEnabled) {
@@ -468,8 +426,8 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Organisations — Police/Army/Navy/Air Force/Aviation Control.
-  // Reference data seeded at startup; no write routes yet
+  // Organisations (Phase 6) — Police/Army/Navy/Air Force/Aviation
+  // Control. Reference data seeded at startup; no write routes yet
   // (creating a new organisation isn't a demo-relevant operation).
   // -------------------------------------------------------
   organisations: {
@@ -499,8 +457,8 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Users — organisation personnel accounts. Distinct from
-  // citizen_profiles (the public-facing mobile app accounts).
+  // Users (Phase 6) — organisation personnel accounts. Distinct from
+  // citizen_profiles (Phase 3's public-facing mobile app accounts).
   // -------------------------------------------------------
   users: {
     async list() {
@@ -530,7 +488,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Airspace Zones — the live, CRUD-able source of truth for
+  // Airspace Zones (Phase 5) — the live, CRUD-able source of truth for
   // no-fly/restricted/protected zones. Seeded once from geoConfig.js at
   // startup; routes/airspace.js can create/update/deactivate zones
   // afterward, and dispatch-time enforcement (rl/environment.js,
@@ -606,7 +564,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Surveillance Missions — patrol/waypoint mission records.
+  // Surveillance Missions (Phase 5) — patrol/waypoint mission records.
   // See services/surveillance/.
   // -------------------------------------------------------
   surveillanceMissions: {
@@ -852,41 +810,13 @@ const db = {
       localDb.dispatch_logs.push(newLog);
       return [newLog];
     },
-    // Browser-facing routes pass an explicit `limit` to bound the response.
-    // One real incident returned 907 unbounded rows.
-    //
-    // `limit` defaults to null because services/simulatorService.js searches the
-    // full list for a 'launch' entry and for 'SAFETY AUTO-RETURN' and
-    // 'Controller override' notes to compute RL training signals. It passes no
-    // limit and always gets the true history.
-    //
-    // A plain "most recent N" is not safe here: one incident had 995 'control'
-    // entries burying its single 'launch' near the start, and rapidStore.js's
-    // tick() needs that entry for the flight duration display. Lifecycle actions
-    // are always kept in full; only the routine high-volume ones are capped.
-    async listForIncident(incidentId, limit = null) {
+    async listForIncident(incidentId) {
       if (isSupabaseEnabled) {
-        if (!limit) {
-          const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
-          if (error) throw error;
-          return data.reverse();
-        }
-        const [lifecycleRes, recentRes] = await Promise.all([
-          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).in('action', DISPATCH_LOG_LIFECYCLE_ACTIONS),
-          supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false }).limit(limit)
-        ]);
-        if (lifecycleRes.error) throw lifecycleRes.error;
-        if (recentRes.error) throw recentRes.error;
-        const byId = new Map();
-        for (const row of [...lifecycleRes.data, ...recentRes.data]) byId.set(row.id, row);
-        return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        const { data, error } = await supabase.from('dispatch_logs').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
+        if (error) throw error;
+        return data;
       }
-      const all = localDb.dispatch_logs.filter(l => l.incident_id === incidentId);
-      if (!limit) return all.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      const byId = new Map();
-      for (const row of all.filter(l => DISPATCH_LOG_LIFECYCLE_ACTIONS.includes(l.action))) byId.set(row.id, row);
-      for (const row of [...all].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, limit)) byId.set(row.id, row);
-      return [...byId.values()].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      return localDb.dispatch_logs.filter(l => l.incident_id === incidentId).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
   },
 
@@ -901,11 +831,12 @@ const db = {
         longitude: parseFloat(snapData.longitude),
         timestamp: new Date().toISOString(),
         image_url: snapData.image_url,
+        // Extended Command 2 metadata
         heading: snapData.heading != null ? parseFloat(snapData.heading) : null,
         altitude: snapData.altitude != null ? parseFloat(snapData.altitude) : null,
         reason: snapData.reason || 'manual',
         target: snapData.target || null,
-        // Evidence integrity fields — sealed by services/camera/cameraManager.js
+        // Phase 4 evidence integrity — sealed by services/camera/cameraManager.js
         night_vision_active: snapData.night_vision_active ?? null,
         previous_hash: snapData.previous_hash ?? null,
         entry_hash: snapData.entry_hash ?? null,
@@ -920,23 +851,13 @@ const db = {
       localDb.snapshots.push(newSnap);
       return newSnap;
     },
-    // Same design as dispatchLogs.listForIncident() above. `limit` defaults to
-    // null because cameraManager.lastSnapshotHash() reads the last entry to
-    // extend the evidence hash chain; only pass a limit from a browser-facing
-    // route. One real incident returned 900 rows.
-    async listForIncident(incidentId, limit = null) {
+    async listForIncident(incidentId) {
       if (isSupabaseEnabled) {
-        let query = supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: false });
-        if (limit) query = query.limit(limit);
-        const { data, error } = await query;
+        const { data, error } = await supabase.from('snapshots').select('*').eq('incident_id', incidentId).order('timestamp', { ascending: true });
         if (error) throw error;
-        return data.reverse();
+        return data;
       }
-      let result = localDb.snapshots
-        .filter(s => s.incident_id === incidentId)
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      if (limit) result = result.slice(0, limit);
-      return result.reverse();
+      return localDb.snapshots.filter(s => s.incident_id === incidentId);
     }
   },
 
@@ -959,7 +880,7 @@ const db = {
         duration_seconds: data.duration_seconds || null,
         stream_url: data.stream_url || null,
         created_at: new Date().toISOString(),
-        // Evidence integrity fields — set at finalization, not creation
+        // Phase 4 evidence integrity — set at finalization, not creation
         // (a "recording" row is still mutable, so it can't be sealed yet).
         previous_hash: null,
         entry_hash: null,
@@ -1040,7 +961,7 @@ const db = {
   // -------------------------------------------------------
   // Controller Actions — operator action audit log.
   // Every command issued by the human controller is logged.
-  // This becomes the foundation for AI/RL feedback.
+  // This becomes the foundation for AI/RL feedback (Command 3+).
   // -------------------------------------------------------
   controllerActions: {
     async create(data) {
@@ -1083,41 +1004,6 @@ const db = {
         .slice(0, limit);
     },
 
-    /**
-     * Most recent controller actions across the whole fleet, newest first.
-     *
-     * Exists so routes/fleet.js's decision feed can issue ONE query instead
-     * of one listForDrone() per drone (a 1+N: 23 calls for a 22-drone fleet,
-     * each a separate PostgREST round trip under Supabase). Sorting and
-     * truncation happen in the database rather than in Node, so only `limit`
-     * rows cross the wire instead of (drones x perDroneLimit) rows.
-     */
-    async listRecent(limit = 100, droneIds = null) {
-      // droneIds restricts the feed to a caller's in-scope drones. Passing
-      // null means no restriction - callers that have already established
-      // the caller may see the whole fleet should pass null rather than a
-      // list of every id, to keep the PostgREST query string short.
-      if (droneIds && droneIds.length === 0) return [];
-
-      if (isSupabaseEnabled) {
-        try {
-          let query = supabase
-            .from('controller_actions')
-            .select('*');
-          if (droneIds) query = query.in('drone_id', droneIds);
-          const { data, error } = await query
-            .order('timestamp', { ascending: false })
-            .limit(limit);
-          if (!error) return data;
-        } catch (_) {}
-      }
-      const allowed = droneIds ? new Set(droneIds) : null;
-      return localDb.controller_actions
-        .filter(a => !allowed || allowed.has(a.drone_id))
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-        .slice(0, limit);
-    },
-
     async listForMission(missionId, limit = 50) {
       if (isSupabaseEnabled) {
         try {
@@ -1133,9 +1019,9 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // RL Experience Buffer — (state, action, reward, next_state) tuples
-  // from every completed mission. neuralPolicy trains on this (see
-  // rl/trainer.js) via rl/featureEncoder.js, which reconstructs
+  // RL Experience Buffer (Phase 2) — (state, action, reward, next_state)
+  // tuples from every completed mission. Phase 7's neuralPolicy trains on
+  // this (see rl/trainer.js) via rl/featureEncoder.js, which reconstructs
   // per-candidate features from the stored `state` snapshot.
   // -------------------------------------------------------
   experienceBuffer: {
@@ -1178,7 +1064,7 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Security Audit Log — SHA-256 hash-chained security events
+  // Security Audit Log (Phase 8) — SHA-256 hash-chained security events
   // (login attempts, airspace zone writes, RL mode switches, unauthorized
   // role-gated attempts). See services/security/securityAuditLogger.js,
   // which reuses camera/evidenceHasher.js's chaining logic unchanged
@@ -1225,11 +1111,10 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Citizen Profiles — RAPID Citizen mobile app accounts.
+  // Citizen Profiles (Phase 3) — RAPID Citizen mobile app accounts.
   // Auth here is a deliberate placeholder (phone-only lookup, no
-  // password verification) — organisation users get real auth (see
-  // services/auth/authService.js); this is not that. Do not treat this
-  // as a security boundary.
+  // password verification) — real auth is Phase 6 (R02). Do not
+  // treat this as a security boundary.
   // -------------------------------------------------------
   citizenProfiles: {
     async create(data) {
@@ -1292,7 +1177,8 @@ const db = {
   },
 
   // -------------------------------------------------------
-  // Voice Reports — audit trail for citizen voice/text emergency reports.
+  // Voice Reports (Phase 3) — audit trail for citizen voice/text
+  // emergency reports, per architecture Section 7.2's "audit" block.
   // -------------------------------------------------------
   voiceReports: {
     async create(data) {
@@ -1333,8 +1219,8 @@ const db = {
   }
 };
 // ============================================================
-// Supabase seeding � runs at startup when Supabase is configured.
-// Step 1: Orgs + demo users (must run first � bases FK to org IDs).
+// Supabase seeding � runs at startup when Supabase is configured.
+// Step 1: Orgs + demo users (must run first � bases FK to org IDs).
 // Step 2: Full geographic hierarchy + drone fleet (first boot only,
 //         guarded by checking if nations AND drones tables are empty).
 // ============================================================
@@ -1349,86 +1235,16 @@ async function seedOrganisationsAndUsersInSupabase() {
     if (fetchOrgError) throw fetchOrgError;
     const orgIdByCode = Object.fromEntries(liveOrgs.map(o => [o.code, o.id]));
 
-    // Live states may not exist yet on a first boot; when they do, scope_id
-    // must be remapped onto them. seedUsers carry scope_id values from this
-    // process's in-memory seed (fresh UUIDs each boot), which match nothing
-    // persisted - writing those verbatim is what locked STATE_COMMANDERs out
-    // of every resource. reconcileUserScopesInSupabase() covers the first-boot
-    // case, after the geography seed has created the states.
-    const { data: liveStates } = await supabase.from('states').select('id, code');
-    const liveStateIdByCode = Object.fromEntries((liveStates || []).map(s => [s.code, s.id]));
-    const seedStateCodeById = Object.fromEntries(seedStates.map(s => [s.id, s.code]));
-
     const userPayload = seedUsers.map(({ id, organisation_id, ...rest }) => {
       const code = seedOrganisations.find(o => o.id === organisation_id)?.code;
-      const mapped = { ...rest, organisation_id: orgIdByCode[code] };
-
-      if (mapped.scope_type === 'state' && mapped.scope_id) {
-        const stateCode = seedStateCodeById[mapped.scope_id];
-        const liveId = stateCode ? liveStateIdByCode[stateCode] : null;
-        if (liveId) mapped.scope_id = liveId;
-      }
-      return mapped;
+      return { ...rest, organisation_id: orgIdByCode[code] };
     });
     const { error: userError } = await supabase.from('users').upsert(userPayload, { onConflict: 'username' });
     if (userError) throw userError;
 
     console.log('?? Auth: Organisations + demo personnel accounts synced to Supabase.');
   } catch (err) {
-    console.error('??  Failed to sync organisations/users into Supabase � auth may fail:', err.message);
-  }
-}
-
-/**
- * Remaps user scope_id values onto the live Supabase state rows.
- *
- * Seeded users carry scope_ids generated fresh on each boot, which match no
- * persisted state row. Left unrepaired, resolveAllowedBaseIds returns nothing
- * and a state-scoped commander sees an empty fleet. Runs after the geography
- * seed, and only writes rows whose scope_id is actually wrong.
- */
-async function reconcileUserScopesInSupabase() {
-  try {
-    const { data: liveStates, error: stateErr } = await supabase.from('states').select('id, code');
-    if (stateErr) throw stateErr;
-    if (!liveStates || liveStates.length === 0) return;
-
-    const liveStateIdByCode = Object.fromEntries(liveStates.map(s => [s.code, s.id]));
-    const seedStateCodeById = Object.fromEntries(seedStates.map(s => [s.id, s.code]));
-
-    const { data: liveUsers, error: userErr } = await supabase
-      .from('users')
-      .select('id, username, scope_type, scope_id');
-    if (userErr) throw userErr;
-
-    // Only 'state' scopes are seeded today. A 'district' or 'base' scoped user
-    // would need the same code-based remapping against its own table.
-    const stale = (liveUsers || []).filter(u => {
-      if (u.scope_type !== 'state') return false;
-      const seedUser = seedUsers.find(su => su.username === u.username);
-      if (!seedUser) return false;
-      const code = seedStateCodeById[seedUser.scope_id];
-      const correctId = code ? liveStateIdByCode[code] : null;
-      return correctId && correctId !== u.scope_id;
-    });
-
-    // Bounded by the number of state-scoped demo users (2), and a no-op on
-    // every boot after the first repair, so a loop is acceptable here.
-    for (const u of stale) {
-      const code = seedStateCodeById[seedUsers.find(su => su.username === u.username).scope_id];
-      const { error } = await supabase
-        .from('users')
-        .update({ scope_id: liveStateIdByCode[code] })
-        .eq('id', u.id);
-      if (error) throw error;
-      console.log(`   Auth: repaired scope_id for ${u.username} -> state ${code}`);
-    }
-
-    if (stale.length > 0) {
-      console.log(`Auth: repaired ${stale.length} stale user scope_id value(s).`);
-    }
-  } catch (err) {
-    console.error('Failed to reconcile user scopes in Supabase:', err.message);
+    console.error('??  Failed to sync organisations/users into Supabase � auth may fail:', err.message);
   }
 }
 
@@ -1441,7 +1257,7 @@ async function seedGeographyAndFleetToSupabase() {
     const dronesSeeded = existingDrones  && existingDrones.length  > 0;
 
     if (geoSeeded && dronesSeeded) {
-      console.log('?? Seed: All Supabase data present � skipping seed.');
+      console.log('?? Seed: All Supabase data present � skipping seed.');
       return;
     }
 
@@ -1450,7 +1266,7 @@ async function seedGeographyAndFleetToSupabase() {
     let baseIdByCode = Object.fromEntries((liveBasesCheck || []).map(b => [b.base_code, b.id]));
 
     if (!geoSeeded) {
-      console.log('?? Seed: First boot � seeding geographic hierarchy to Supabase...');
+      console.log('?? Seed: First boot � seeding geographic hierarchy to Supabase...');
 
       // 1. Nations
       const { error: natErr } = await supabase.from('nations')
@@ -1468,7 +1284,7 @@ async function seedGeographyAndFleetToSupabase() {
       const { data: liveStates } = await supabase.from('states').select('id, code');
       const stateIdByCode = Object.fromEntries(liveStates.map(s => [s.code, s.id]));
 
-      // 3. Districts (no unique DB constraint � use insert, ignore duplicates)
+      // 3. Districts (no unique DB constraint � use insert, ignore duplicates)
       const districtPayload = seedDistricts.map(({ id, state_id, ...r }) => ({
         ...r, state_id: stateIdByCode[seedStates.find(s => s.id === state_id)?.code]
       }));
@@ -1482,7 +1298,7 @@ async function seedGeographyAndFleetToSupabase() {
         if (live) localToLiveDistrictId[d.id] = live.id;
       }
 
-      // 4. Organisations (already seeded � fetch stable IDs)
+      // 4. Organisations (already seeded � fetch stable IDs)
       const { data: liveOrgs } = await supabase.from('organisations').select('id, code');
       const orgIdByCode = Object.fromEntries(liveOrgs.map(o => [o.code, o.id]));
 
@@ -1527,9 +1343,7 @@ async function seedGeographyAndFleetToSupabase() {
 }
 
 if (isSupabaseEnabled) {
-  seedOrganisationsAndUsersInSupabase()
-    .then(() => seedGeographyAndFleetToSupabase())
-    .then(() => reconcileUserScopesInSupabase());
+  seedOrganisationsAndUsersInSupabase().then(() => seedGeographyAndFleetToSupabase());
 }
 
 module.exports = db;

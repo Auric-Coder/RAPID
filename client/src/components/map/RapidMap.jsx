@@ -1,9 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet';
-// Leaflet's CSS is imported here rather than linked from index.html, so Vite
-// bundles it into this component's lazy chunk. It is fetched only when the
-// Dashboard is visited, and from the npm package rather than a CDN.
-import 'leaflet/dist/leaflet.css';
 import { useShallow } from 'zustand/react/shallow';
 import useRapidStore from '../../store/rapidStore';
 import { policeStationIcon, rapidBaseIcon, incidentIcon, droneIcon, FLYING_STATUSES } from '../shared/utils';

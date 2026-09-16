@@ -139,19 +139,9 @@ CREATE TABLE IF NOT EXISTS telemetry_history (
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
     altitude DOUBLE PRECISION NOT NULL,
-    speed DOUBLE PRECISION DEFAULT 0,
-    heading DOUBLE PRECISION DEFAULT 0,
     battery_level INT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- speed/heading were missing from this table while the telemetry simulator
--- has always written them, so every insert failed against Supabase with
--- "Could not find the 'heading' column" and telemetry_history stayed empty.
--- These two statements bring an already-deployed database up to date; they
--- are safe to re-run.
-ALTER TABLE telemetry_history ADD COLUMN IF NOT EXISTS speed DOUBLE PRECISION DEFAULT 0;
-ALTER TABLE telemetry_history ADD COLUMN IF NOT EXISTS heading DOUBLE PRECISION DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_drone_time ON telemetry_history(drone_id, timestamp DESC);
 
@@ -165,12 +155,6 @@ CREATE TABLE IF NOT EXISTS dispatch_logs (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     notes TEXT
 );
-
--- dispatchLogs.listForIncident() filters by incident_id and orders by
--- timestamp: the query behind GET /api/incidents/:id/logs, a hot path for both
--- Dashboard incident selection and the Incidents dossier. Composite so Postgres
--- satisfies the WHERE and the ORDER BY from one index. 19,901 rows and growing.
-CREATE INDEX IF NOT EXISTS idx_dispatch_logs_incident_time ON dispatch_logs(incident_id, timestamp);
 
 -- 6. Snapshots (Evidence Capture)
 CREATE TABLE IF NOT EXISTS snapshots (
@@ -193,13 +177,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     hash_payload TEXT
 );
 
--- snapshots.listForIncident() filters by incident_id and orders by timestamp.
--- idx_snapshots_incident covered only the filter, leaving a separate sort on
--- every call. This composite covers both and still serves plain incident_id
--- lookups by Postgres's leftmost-column rule, so the old index is dropped
--- rather than kept alongside it. 19,735 rows and growing.
-DROP INDEX IF EXISTS idx_snapshots_incident;
-CREATE INDEX IF NOT EXISTS idx_snapshots_incident_time ON snapshots(incident_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_snapshots_incident ON snapshots(incident_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_drone ON snapshots(drone_id);
 
 -- 7. Mission Recordings (Evidence & Audit Lifecycle)

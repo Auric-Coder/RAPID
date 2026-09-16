@@ -1,9 +1,11 @@
 /**
  * RAPID Fleet Decision Engine
+ * Command 3: Intelligent Dispatch & Dynamic Reassignment
  *
- * Deterministic, explainable decision-support system.
- * Does NOT make autonomous decisions; every recommendation requires
- * controller approval to execute.
+ * LABEL: "RAPID Fleet Decision Engine"
+ * This is a deterministic, explainable decision-support system.
+ * It is NOT reinforcement learning. It does NOT make autonomous decisions.
+ * Every recommendation requires controller approval to execute.
  *
  * Algorithm:
  *   1. Retrieve all Rakshaks

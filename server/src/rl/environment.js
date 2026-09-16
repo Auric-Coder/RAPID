@@ -1,12 +1,13 @@
 /**
- * RAPID RL — MDP Environment
+ * RAPID RL — MDP Environment (Phase 2)
  *
- * Builds the observation state, produces the safety-checked
- * recommendation that dispatchService executes, and records completed
- * missions into the experience buffer.
+ * Ties the pieces together: builds the observation state, produces the
+ * safety-checked recommendation dispatchService actually executes, and
+ * records completed missions into the experience buffer.
  *
- * getState() omits fields the simulator doesn't model (wind, weather)
- * rather than fabricating numbers for them.
+ * getState() intentionally omits fields the simulator doesn't model at
+ * all (wind, weather) rather than fabricating numbers for them — see
+ * inline notes.
  */
 const db = require('../config/database');
 const { getDistance } = require('../services/dispatchService');
@@ -35,8 +36,12 @@ async function resolveStateCodeForBase(baseId) {
   return state ? state.code : null;
 }
 
-// Zones come from db.airspaceZones (the live, CRUD-able source), so
-// changes made after startup via the airspace routes are enforced here.
+/**
+ * Phase 5: zones now come from db.airspaceZones (the live, CRUD-able
+ * source of truth seeded from geoConfig at startup) rather than
+ * reading geoConfig directly — so zones created/edited after startup
+ * via routes/airspace.js are actually enforced here, not decorative.
+ */
 async function activeZonesForStateCode(stateCode) {
   if (!stateCode) return [];
   const state = await db.states.get(stateCode);
@@ -52,7 +57,8 @@ function blockingZonesOnly(zones) {
 }
 
 /**
- * getState() — the MDP observation, scoped to what's computable from the current data model.
+ * getState() — the MDP observation from architecture Section 11.2,
+ * scoped to what's actually computable from the current data model.
  */
 async function getState() {
   const [drones, incidents, bases, airspaceZones] = await Promise.all([
@@ -143,8 +149,8 @@ async function getConstrainedRecommendation(incidentId) {
   const policy = modeManager.getActivePolicy();
   const recommendation = await policy.recommend(incidentId);
 
-  // In EVALUATION mode the candidate policy (neural) is what actually
-  // drives the recommendation, but we also compute what the
+  // Phase 7: in EVALUATION mode the candidate policy (neural) is what
+  // actually drives the recommendation, but we also compute what the
   // frozen heuristic would have picked — purely for comparison, never
   // to change the outcome. Mutated in place so it survives both the
   // early-return below and the reroute branch further down (which
@@ -259,6 +265,5 @@ module.exports = {
   getConstrainedRecommendation,
   beginExperience,
   completeExperience,
-  resolveStateCodeForBase,
-  activeZonesForStateCode
+  resolveStateCodeForBase
 };

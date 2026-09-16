@@ -1,10 +1,11 @@
 /**
  * RAPID — Centralized Geographic Configuration
  *
- * A hierarchical seed source — Nation -> State -> District -> Base —
- * consumed by database.js to build the nations/states/districts/bases
- * collections, and by routes/geo.js to serve them to the client (which
- * keeps no duplicate copy of this data).
+ * v1.3 Phase 1: Restructured into a hierarchical seed source —
+ * Nation -> State -> District -> Base — consumed by database.js
+ * to build the nations/states/districts/bases collections, and by
+ * routes/geo.js to serve them to the client (which no longer keeps
+ * its own duplicate copy of this data).
  *
  * latitude  = north/south component (positive = north of equator)
  * longitude = east/west component  (positive = east of prime meridian)
@@ -74,9 +75,9 @@ const OPERATING_AREAS = [
         ]
       }
     ],
-    // Fictional demo protected zones for surveillance/patrol missions —
-    // not tied to any real specific facility, just a real area within
-    // Goa's operating bounds to patrol against.
+    // Fictional demo protected zones for surveillance/patrol missions
+    // (Phase 5) — not tied to any real specific facility, just a real
+    // area within Goa's operating bounds to patrol against.
     surveillanceZones: [
       {
         name: 'Demo Patrol Zone — Goa Coastal Belt',

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
-import * as Location from 'expo-location';
+import { getEmergencyLocation, useLocationSharing } from '../src/context/LocationSharingContext';
 import { useRouter } from 'expo-router';
 import { citizenApi } from '../src/api/client';
 
@@ -17,19 +17,21 @@ const CATEGORIES = [
 
 export default function ReportText() {
   const router = useRouter();
+  const sharing = useLocationSharing();
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(null);
   const [location, setLocation] = useState(null);
+  const [locationError, setLocationError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const position = await Location.getCurrentPositionAsync({});
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy_m: position.coords.accuracy });
-      }
-    })();
+    let cancelled = false;
+    getEmergencyLocation().then(value => {
+      if (!cancelled) setLocation(value);
+    }).catch(err => {
+      if (!cancelled) setLocationError(err.message);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const handleSubmit = async () => {
@@ -37,18 +39,19 @@ export default function ReportText() {
       Alert.alert('Description required', 'Describe what is happening so it can be classified and dispatched correctly.');
       return;
     }
-    if (!location) {
-      Alert.alert('Location required', 'Waiting for GPS lock — please try again in a moment.');
-      return;
-    }
+    if (submitting) return;
     setSubmitting(true);
     try {
+      const freshLocation = await getEmergencyLocation();
+      setLocation(freshLocation);
+      setLocationError(null);
       const result = await citizenApi.submitEmergency({
-        location,
+        location: freshLocation,
         category: category || undefined,
         textReport: description.trim(),
         deviceInfo: { os: Platform.OS, appVersion: '1.0.0' }
       });
+      sharing.startSharing(result, freshLocation);
       router.replace(`/track/${result.incidentId}`);
     } catch (err) {
       Alert.alert('Submission failed', err.message);
@@ -82,8 +85,10 @@ export default function ReportText() {
       ))}
 
       <Text style={styles.gpsNote}>
-        {location ? `GPS: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'Acquiring GPS…'}
+        {location ? `GPS: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : (locationError || 'Acquiring GPS…')}
       </Text>
+
+      <Text style={styles.gpsNote}>Submitting shares your live location while the app is open. Stop sharing from the tracking screen. GPS is retried on submission.</Text>
 
       <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={submitting}>
         <Text style={styles.submitButtonText}>{submitting ? 'Sending…' : 'Submit Report'}</Text>

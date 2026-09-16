@@ -1,10 +1,10 @@
 /**
- * RAPID Surveillance — Coordinator
+ * RAPID Surveillance — Coordinator (Phase 5)
  *
  * Mission lifecycle (create/start/pause/resume/abort), the per-tick
  * patrol movement/anomaly-detection logic simulatorService.js calls
  * for any drone in the 'Patrolling' state, and battery-triggered
- * handoff between drones.
+ * handoff between drones per architecture Section 5.2.
  */
 const db = require('../../config/database');
 const websocketService = require('../websocketService');
@@ -103,8 +103,8 @@ async function abortMission(missionId, reason) {
 }
 
 /**
- * Battery-triggered handoff: the current patrol drone can't safely
- * continue. Find a fresh Standby/Charging
+ * Battery-triggered handoff (architecture Section 5.2): the current
+ * patrol drone can't safely continue. Find a fresh Standby/Charging
  * drone and switch the mission to it; the outgoing drone heads home.
  * The incoming drone resumes patrol from *its own* current position —
  * no position teleport — so it naturally flies toward the mission's

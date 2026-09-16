@@ -25,7 +25,7 @@ export default function ManualIncidentModal() {
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
             className="w-full max-w-md bg-[#161F30] border border-[#1F2E45] rounded-3xl p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-4 border-b border-[#1F2E45] pb-3">
-              <h3 className="font-bold text-sm uppercase tracking-wider text-white">Log Incident Manually</h3>
+              <h3 className="font-bold text-sm uppercase tracking-wider text-white">Manual Dispatch Ingestion</h3>
               <button onClick={() => setShowManualForm(false)} className="text-gray-500 hover:text-white"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleManualIncidentSubmit} className="space-y-4 text-xs">
@@ -57,7 +57,7 @@ export default function ManualIncidentModal() {
                   <input type="number" step="0.000001" required value={manualLng} onChange={e => setManualLng(e.target.value)} className="w-full bg-[#1F2E45] border border-gray-700 focus:border-cyan-500 rounded-xl px-3 py-2 text-white focus:outline-none" />
                 </div>
               </div>
-              <button type="submit" className="w-full mt-2 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-lg">Create Incident</button>
+              <button type="submit" className="w-full mt-2 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl hover:opacity-90 transition-all shadow-lg">DISPATCH SYSTEM</button>
             </form>
           </motion.div>
         </div>

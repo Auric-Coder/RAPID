@@ -1,5 +1,5 @@
 /**
- * RAPID Auth Service
+ * RAPID Auth Service (Phase 6)
  *
  * Custom JWT auth — password check + token issuance/verification.
  * The token payload carries everything downstream middleware/routes

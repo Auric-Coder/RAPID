@@ -7,9 +7,9 @@ const { SESSION_COOKIE_NAME } = require('../config/authConfig');
 const securityAuditLogger = require('../services/security/securityAuditLogger');
 
 /**
- * RAPID Auth Routes. Mounted at /api/auth, deliberately BEFORE the
- * global `requireAuth` gate in index.js (login itself must be
- * reachable while logged out).
+ * RAPID Auth Routes — Phase 6. Mounted at /api/auth, deliberately
+ * BEFORE the global `requireAuth` gate in index.js (login itself must
+ * be reachable while logged out).
  */
 
 const COOKIE_OPTIONS = {
@@ -27,8 +27,8 @@ function auditLog(event) {
   securityAuditLogger.logEvent(event).catch(err => console.error('Security audit log write failed:', err.message));
 }
 
-// Throttle login attempts per-IP. Deliberately rate-limit-only, not
-// account lockout — a mistyped password during an active incident
+// Phase 8: throttle login attempts per-IP. Deliberately rate-limit-only,
+// not account lockout — a mistyped password during an active incident
 // must never lock a commander out of their own account, only slow down
 // abuse-level attempt volume from one address.
 const loginLimiter = rateLimit({

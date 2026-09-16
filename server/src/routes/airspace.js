@@ -4,7 +4,6 @@ const db = require('../config/database');
 const airspaceManager = require('../services/airspace/airspaceManager');
 const { requireRole } = require('../middleware/auth');
 const securityAuditLogger = require('../services/security/securityAuditLogger');
-const { invalidate } = require('../middleware/apiCache');
 
 function auditLog(event) {
   securityAuditLogger.logEvent(event).catch(err => console.error('Security audit log write failed:', err.message));
@@ -15,14 +14,14 @@ function actorFrom(req) {
 }
 
 /**
- * RAPID Airspace Routes
+ * RAPID Airspace Routes — Phase 5
  * Mounted at /api/airspace. See services/airspace/airspaceManager.js.
  */
 
-// Aviation Control can issue airspace restrictions visible to ALL
-// organisations. Commanders can too, for their own organisation's
-// operating area (e.g. a state police commander declaring a temporary
-// restriction around an incident).
+// Per architecture Section 2.1: Aviation Control "can issue airspace
+// restrictions visible to ALL organisations." Commanders can too, for
+// their own organisation's operating area (e.g. a state police
+// commander declaring a temporary restriction around an incident).
 const ZONE_WRITE_ROLES = ['AIRSPACE_AUTHORITY', 'NATIONAL_COMMANDER', 'STATE_COMMANDER'];
 
 // GET /api/airspace/zones?state=GA&activeOnly=true
@@ -65,10 +64,6 @@ router.post('/zones', requireRole(...ZONE_WRITE_ROLES), async (req, res) => {
     if (!stateId) return res.status(400).json({ error: 'state (code) or state_id is required' });
     const zone = await airspaceManager.createZone({ ...rest, state_id: stateId });
     auditLog({ action: securityAuditLogger.EVENTS.ZONE_CREATED, actor: actorFrom(req), target: { zoneId: zone.id, name: zone.name } });
-    // Clear GET /api/geo/map-config immediately rather than waiting out its 60s
-    // TTL, since this is no-fly-zone data. Clearing every state's entry is
-    // cheapest: there are two states, and it avoids a state_id lookup here.
-    invalidate('geo:map-config:');
     res.status(201).json(zone);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -80,7 +75,6 @@ router.patch('/zones/:id', requireRole(...ZONE_WRITE_ROLES), async (req, res) =>
   try {
     const zone = await airspaceManager.updateZone(req.params.id, req.body);
     auditLog({ action: securityAuditLogger.EVENTS.ZONE_UPDATED, actor: actorFrom(req), target: { zoneId: zone.id, name: zone.name }, details: { fields: Object.keys(req.body || {}) } });
-    invalidate('geo:map-config:'); // see the note in the POST handler above
     res.json(zone);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -92,7 +86,6 @@ router.delete('/zones/:id', requireRole(...ZONE_WRITE_ROLES), async (req, res) =
   try {
     const zone = await airspaceManager.deactivateZone(req.params.id);
     auditLog({ action: securityAuditLogger.EVENTS.ZONE_DELETED, actor: actorFrom(req), target: { zoneId: zone.id, name: zone.name } });
-    invalidate('geo:map-config:'); // see the note in the POST handler above
     res.json(zone);
   } catch (err) {
     res.status(400).json({ error: err.message });

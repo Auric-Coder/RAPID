@@ -30,6 +30,7 @@ export default function MissionControlPanel() {
   // Camera
   const cameraMode = useRapidStore(s => s.cameraMode);
   const handleCameraMode = useRapidStore(s => s.handleCameraMode);
+  const isFullscreen = useRapidStore(s => s.isFullscreen);
   const toggleFullscreen = useRapidStore(s => s.toggleFullscreen);
   const isNightVisionActive = useRapidStore(s => s.isNightVisionActive);
   const handleSnapshot = useRapidStore(s => s.handleSnapshot);
@@ -442,10 +443,7 @@ export default function MissionControlPanel() {
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
                   {snapshots.map((snap) => (
                     <div key={snap.id} className="relative rounded-xl overflow-hidden border border-gray-800 group cursor-zoom-in">
-                      {/* This grid holds up to 200 snapshots. Without
-                          loading="lazy" every one starts downloading the
-                          moment the panel renders. */}
-                      <img src={snap.image_url} loading="lazy" className="w-full aspect-video object-cover opacity-70 group-hover:opacity-100 transition-all" alt={snap.label} />
+                      <img src={snap.image_url} className="w-full aspect-video object-cover opacity-70 group-hover:opacity-100 transition-all" alt={snap.label} />
                       <div className="absolute bottom-0 left-0 w-full bg-black/80 px-1.5 py-1">
                         <div className="text-[8px] text-white font-mono font-bold uppercase truncate">{snap.label}</div>
                         {snap.heading != null && (

@@ -1,5 +1,5 @@
 /**
- * RAPID RL — Trainer
+ * RAPID RL — Trainer (Phase 7)
  *
  * Samples the experience buffer (real completed-mission outcomes, not
  * synthetic data) and runs one gradient-descent pass on neuralPolicy.

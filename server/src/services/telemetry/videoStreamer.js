@@ -10,7 +10,7 @@ const videoStreamer = {
       throw new Error(`Drone ${droneId} not found`);
     }
 
-    console.log(`Video Ingest: Mounted livestream URL on ${drone.call_sign}: ${streamUrl}`);
+    console.log(`📹 Video Ingest: Mounted livestream URL on ${drone.call_sign}: ${streamUrl}`);
     
     return await db.drones.update(droneId, {
       stream_url: streamUrl
@@ -22,7 +22,7 @@ const videoStreamer = {
    * used when establishing low-latency streams from live drone cameras.
    */
   handleSignaling(droneId, sdpOffer) {
-    console.log(`WebRTC Signaling: Received SDP Offer for drone ${droneId}`);
+    console.log(`🔌 WebRTC Signaling: Received SDP Offer for drone ${droneId}`);
     
     // Future WebRTC server integrations (e.g. Kurento, Janus, or Mediasoup)
     // would parse this offer, spin up a channel, and return an SDP answer.

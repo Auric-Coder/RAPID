@@ -24,50 +24,50 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0F19] flex items-center justify-center p-6">
+    <div className="min-h-screen bg-page flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="bg-cyan-500/10 p-3 rounded-xl border border-cyan-500/30 glow-cyan mb-4">
-            <Shield className="h-8 w-8 text-cyan-400" />
+          <div className="bg-accent/10 p-3 rounded-xl border border-accent/30 mb-4">
+            <Shield className="h-8 w-8 text-accent" />
           </div>
-          <h1 className="font-extrabold text-2xl tracking-wider text-white">R.A.P.I.D.</h1>
-          <p className="text-[11px] text-cyan-400 font-mono tracking-widest uppercase mt-1">Police Dispatch Command Login</p>
+          <h1 className="font-extrabold text-2xl tracking-wider text-text">R.A.P.I.D.</h1>
+          <p className="text-[11px] text-accent font-mono tracking-widest uppercase mt-1">Police Dispatch — Command Centre</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[#111827] border border-[#1F2E45] rounded-xl p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl p-6 space-y-4">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider mb-1 block">Username</label>
-            <div className="flex items-center gap-2 bg-[#0B0F19] border border-[#1F2E45] rounded-lg px-3 py-2 focus-within:border-cyan-500/50">
-              <User className="h-4 w-4 text-gray-500" />
+            <label className="text-[10px] uppercase text-muted font-bold tracking-wider mb-1 block">Username</label>
+            <div className="flex items-center gap-2 bg-page border border-border-strong rounded-lg px-3 py-2 focus-within:border-accent">
+              <User className="h-4 w-4 text-muted" />
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoFocus
                 autoComplete="username"
-                className="bg-transparent outline-none text-white text-sm flex-1"
+                className="bg-transparent outline-none text-text text-sm flex-1"
                 placeholder="e.g. goa.commander"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-gray-500 font-bold tracking-wider mb-1 block">Password</label>
-            <div className="flex items-center gap-2 bg-[#0B0F19] border border-[#1F2E45] rounded-lg px-3 py-2 focus-within:border-cyan-500/50">
-              <Lock className="h-4 w-4 text-gray-500" />
+            <label className="text-[10px] uppercase text-muted font-bold tracking-wider mb-1 block">Password</label>
+            <div className="flex items-center gap-2 bg-page border border-border-strong rounded-lg px-3 py-2 focus-within:border-accent">
+              <Lock className="h-4 w-4 text-muted" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                className="bg-transparent outline-none text-white text-sm flex-1"
+                className="bg-transparent outline-none text-text text-sm flex-1"
                 placeholder="••••••••"
               />
             </div>
           </div>
 
           {authError && (
-            <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+            <div className="text-status-critical text-xs bg-status-critical/10 border border-status-critical/30 rounded-lg px-3 py-2">
               {authError}
             </div>
           )}
@@ -75,13 +75,13 @@ export default function Login() {
           <button
             type="submit"
             disabled={submitting || !username || !password}
-            className="w-full bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-semibold text-sm rounded-lg py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full bg-accent hover:bg-accent/90 border border-accent text-on-solid font-semibold text-sm rounded-lg py-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? 'Authenticating…' : 'Sign In'}
           </button>
         </form>
 
-        <p className="text-center text-[10px] text-gray-600 font-mono mt-4">
+        <p className="text-center text-[10px] text-muted font-mono mt-4">
           Demo prototype — credentials issued by system administrator
         </p>
       </div>

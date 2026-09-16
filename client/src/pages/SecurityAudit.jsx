@@ -115,7 +115,7 @@ function SecurityAudit() {
         </div>
       )}
 
-      <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+      <div className="bg-surface rounded-2xl p-5 border border-border">
         <div className="space-y-2">
           {entries.map(e => (
             <div key={e.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900/30 flex items-center justify-between gap-4">

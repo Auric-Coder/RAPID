@@ -7,31 +7,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        // High-end dark theme styling colors
-        cyber: {
-          bg: '#0B0F19',
-          card: '#161F30',
-          border: '#1F2E45',
-          accent: '#06B6D4', // Neon Cyan
-          alert: '#F97316',  // Safety Orange
-          success: '#10B981', // Emerald Green
-          critical: '#EF4444' // Crimson Red
-        }
+        // Semantic tokens — named for what a colour is FOR, backed by CSS
+        // custom properties in src/index.css so [data-theme="dark"] can
+        // redefine the values without touching a single component class.
+        page: 'var(--color-page)',
+        surface: 'var(--color-surface)',
+        border: 'var(--color-border)',
+        'border-strong': 'var(--color-border-strong)',
+        text: 'var(--color-text)',
+        muted: 'var(--color-text-muted)',
+        accent: 'var(--color-accent)',
+        'on-solid': 'var(--color-text-on-solid)',
+        status: {
+          normal: 'var(--status-normal)',
+          warning: 'var(--status-warning)',
+          urgent: 'var(--status-urgent)',
+          critical: 'var(--status-critical)',
+        },
       },
       fontFamily: {
-        sans: ['Outfit', 'Inter', 'sans-serif'],
+        // Paper Command (docs/research/DIRECTION.md, direction A): one text
+        // family, one accent (mono, for anything tabular — coordinates,
+        // timestamps, IDs, battery/telemetry readouts).
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
-      animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'radar': 'radarPulse 2.5s infinite ease-out',
-      },
-      keyframes: {
-        radarPulse: {
-          '0%': { transform: 'scale(0.8)', opacity: '0.5' },
-          '100%': { transform: 'scale(2.2)', opacity: '0' },
-        }
-      }
     },
   },
   plugins: [],

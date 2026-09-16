@@ -111,7 +111,7 @@ function Fleet() {
             ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5'
             : healthStatus === 'Maintenance'
             ? 'text-red-400 border-red-500/20 bg-red-500/5'
-            : 'text-amber-400 border-amber-500/20 bg-amber-500/5 animate-pulse';
+            : 'text-amber-400 border-amber-500/20 bg-amber-500/5';
 
           // Camera vision description
           const cameraModeStr = !['Standby', 'Charging', 'maintenance'].includes(drone.status)
@@ -121,10 +121,10 @@ function Fleet() {
           return (
             <div
               key={drone.id}
-              className={`cyber-glass rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden ${
+              className={`bg-surface rounded-2xl p-5 border transition-all duration-300 relative overflow-hidden ${
                 drone.status === 'maintenance'
                   ? 'border-red-500/20 bg-red-950/5'
-                  : 'border-[#1F2E45] hover:border-cyan-500/40'
+                  : 'border-border hover:border-accent/40'
               }`}
             >
               {/* Card Status Indicator */}

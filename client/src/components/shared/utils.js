@@ -21,31 +21,35 @@ export const formatEtaShort = (sec) => {
 };
 
 // ── Color Helpers ──
+// Re-pointed at the semantic status tokens (tailwind.config.js -> index.css
+// custom properties) instead of raw Tailwind palette colours, so a battery
+// tier and an incident severity read as the same "warning" everywhere,
+// including under the dark theme.
 export const batteryColor = (tier) => {
-  if (tier === 'green') return 'text-emerald-400';
-  if (tier === 'yellow') return 'text-yellow-400';
-  if (tier === 'orange') return 'text-orange-400';
-  return 'text-red-500';
+  if (tier === 'green') return 'text-status-normal';
+  if (tier === 'yellow') return 'text-status-warning';
+  if (tier === 'orange') return 'text-status-urgent';
+  return 'text-status-critical';
 };
 
 export const batteryBg = (tier) => {
-  if (tier === 'green') return 'bg-emerald-500';
-  if (tier === 'yellow') return 'bg-yellow-500';
-  if (tier === 'orange') return 'bg-orange-500';
-  return 'bg-red-500';
+  if (tier === 'green') return 'bg-status-normal';
+  if (tier === 'yellow') return 'bg-status-warning';
+  if (tier === 'orange') return 'bg-status-urgent';
+  return 'bg-status-critical';
 };
 
 export const returnStatusColor = (s) => {
-  if (s === 'SAFE') return 'text-emerald-400';
-  if (s === 'RETURN_RECOMMENDED') return 'text-yellow-400';
-  return 'text-red-500 animate-pulse';
+  if (s === 'SAFE') return 'text-status-normal';
+  if (s === 'RETURN_RECOMMENDED') return 'text-status-warning';
+  return 'text-status-critical';
 };
 
 export const severityColor = (s) => {
-  if (s === 'critical') return 'text-red-400 border-red-500/30 bg-red-500/10';
-  if (s === 'high') return 'text-orange-400 border-orange-500/30 bg-orange-500/10';
-  if (s === 'medium') return 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
-  return 'text-gray-400 border-gray-500/30 bg-gray-500/10';
+  if (s === 'critical') return 'text-status-critical border-status-critical/30 bg-status-critical/10 font-bold';
+  if (s === 'high') return 'text-status-urgent border-status-urgent/30 bg-status-urgent/10';
+  if (s === 'medium') return 'text-status-warning border-status-warning/30 bg-status-warning/10';
+  return 'text-status-normal border-status-normal/30 bg-status-normal/10';
 };
 
 export const batteryTier = (level) => {
@@ -62,23 +66,37 @@ export const policeStationIcon = L.divIcon({
 });
 
 export const rapidBaseIcon = L.divIcon({
-  html: `<div class="flex items-center justify-center"><div class="h-7 w-7 bg-slate-900 border-2 border-cyan-400 rounded-full shadow-lg flex items-center justify-center relative"><div class="h-2 w-2 bg-cyan-400 rounded-full animate-ping"></div><div class="absolute h-1 w-1 bg-cyan-400 rounded-full"></div></div></div>`,
+  html: `<div class="flex items-center justify-center"><div class="h-7 w-7 bg-slate-900 border-2 border-accent rounded-full shadow-lg flex items-center justify-center"><div class="h-2 w-2 bg-accent rounded-full"></div></div></div>`,
   className: 'custom-base-icon', iconSize: [28, 28]
 });
 
+
+const droneIconCache = new Map();
+const incidentIconCache = new Map();
+const HEADING_BUCKET_DEGREES = 15;
+
 export const incidentIcon = (severity) => {
-  const color = severity === 'critical' ? 'bg-red-500 animate-pulse' : severity === 'high' ? 'bg-orange-500' : 'bg-yellow-500';
-  const ring = severity === 'critical' ? 'border-red-500' : severity === 'high' ? 'border-orange-500' : 'border-yellow-500';
-  return L.divIcon({
-    html: `<div class="relative flex items-center justify-center"><div class="absolute h-8 w-8 ${ring} border rounded-full animate-ping opacity-60"></div><div class="h-5 w-5 ${color} border-2 border-white rounded-full shadow-lg flex items-center justify-center"><span class="text-[9px] font-extrabold text-white">!</span></div></div>`,
+  const key = severity;
+  const cached = incidentIconCache.get(key);
+  if (cached) return cached;
+
+  const fill = severity === 'critical' ? 'bg-status-critical' : severity === 'high' ? 'bg-status-urgent' : severity === 'medium' ? 'bg-status-warning' : 'bg-status-normal';
+  const shape = severity === 'critical' ? 'rounded-sm' : 'rounded-full';
+  const icon = L.divIcon({
+    html: `<div class="flex items-center justify-center"><div class="h-5 w-5 ${fill} ${shape} border-2 border-white shadow-lg flex items-center justify-center"><span class="text-[9px] font-extrabold text-white">!</span></div></div>`,
     className: 'custom-incident-icon', iconSize: [22, 22]
   });
 };
 
 export const droneIcon = (heading, status) => {
-  const color = status === 'Returning' ? '#F59E0B' : status === 'Patrolling' ? '#A855F7' : ['Dispatched', 'En Route'].includes(status) ? '#06B6D4' : '#10B981';
-  return L.divIcon({
-    html: `<div style="transform:rotate(${heading}deg);transition:transform 0.2s linear;" class="flex items-center justify-center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 16M4 20L20 4" stroke="${color}" stroke-width="1.5" opacity="0.6"/><circle cx="4" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="4" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><path d="M12 3L6 17l6-3.5 6 3.5z" fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+  const bucket = Math.round(heading / HEADING_BUCKET_DEGREES) * HEADING_BUCKET_DEGREES % 360;
+  const key = `${status}|${bucket}`;
+  const cached = droneIconCache.get(key);
+  if (cached) return cached;
+
+  const color = status === 'Returning' ? '#A15C00' : status === 'Patrolling' ? '#A855F7' : ['Dispatched', 'En Route'].includes(status) ? '#1E3A8A' : '#2F6B3A';
+  const icon = L.divIcon({
+    html: `<div style="transform:rotate(${bucket}deg);transition:transform 0.2s linear;" class="flex items-center justify-center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="M4 4l16 16M4 20L20 4" stroke="${color}" stroke-width="1.5" opacity="0.6"/><circle cx="4" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="4" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="4" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><circle cx="20" cy="20" r="2.5" fill="${color}" stroke="white" stroke-width="1"/><path d="M12 3L6 17l6-3.5 6 3.5z" fill="${color}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
     className: 'custom-drone-icon', iconSize: [34, 34]
   });
 };

@@ -60,7 +60,7 @@ function Analytics() {
 
       {/* Overview stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono text-gray-400 uppercase font-semibold">Drone Utilization</span>
             <Activity className="h-4.5 w-4.5 text-cyan-400" />
@@ -70,7 +70,7 @@ function Analytics() {
           </p>
         </div>
 
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono text-gray-400 uppercase font-semibold">Active Emergencies</span>
             <ShieldAlert className="h-4.5 w-4.5 text-orange-400 animate-pulse" />
@@ -80,7 +80,7 @@ function Analytics() {
           </p>
         </div>
 
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono text-gray-400 uppercase font-semibold">Average Battery Reserve</span>
             <Battery className="h-4.5 w-4.5 text-emerald-400" />
@@ -90,7 +90,7 @@ function Analytics() {
           </p>
         </div>
 
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45]">
+        <div className="bg-surface rounded-2xl p-5 border border-border">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-mono text-gray-400 uppercase font-semibold">Cases Resolved</span>
             <CheckSquare className="h-4.5 w-4.5 text-emerald-400" />
@@ -105,7 +105,7 @@ function Analytics() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Incident alarm trends (Line chart) */}
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45] flex flex-col h-80">
+        <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col h-80">
           <div className="flex items-center gap-2 mb-4">
             <LineIcon className="h-4.5 w-4.5 text-cyan-400" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-white">Daily Emergency Dispatch Trends</h3>
@@ -124,7 +124,7 @@ function Analytics() {
         </div>
 
         {/* Categories ratio breakdown (Pie Chart) */}
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45] flex flex-col h-80">
+        <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col h-80">
           <div className="flex items-center gap-2 mb-4">
             <PieIcon className="h-4.5 w-4.5 text-cyan-400" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-white">Incidents by Category</h3>
@@ -168,7 +168,7 @@ function Analytics() {
         </div>
 
         {/* Drone reserve levels (Bar Chart) */}
-        <div className="cyber-glass rounded-2xl p-5 border border-[#1F2E45] flex flex-col h-80 lg:col-span-2">
+        <div className="bg-surface rounded-2xl p-5 border border-border flex flex-col h-80 lg:col-span-2">
           <div className="flex items-center gap-2 mb-4">
             <Battery className="h-4.5 w-4.5 text-cyan-400" />
             <h3 className="font-bold text-xs uppercase tracking-wider text-white">Drone Energy Reserves</h3>
